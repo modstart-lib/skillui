@@ -1,0 +1,365 @@
+name: App Store Release
+
+on:
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.24'
+  NODE_VERSION: '20'
+  APP_NAME: 'SkillUI'
+
+jobs:
+  appstore:
+    name: Build & Upload to App Store Connect
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from app.go
+        run: |
+          VERSION=$(sed -n 's/.*Version:[[:space:]]*"v\([^"]*\)".*/\1/p' app.go | head -1)
+          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Version: $VERSION"
+
+      - name: Compute build number
+        run: |
+          VER="${{ env.APP_VERSION }}"
+          MAJOR=$(echo "$VER" | cut -d. -f1)
+          MINOR=$(echo "$VER" | cut -d. -f2)
+          PATCH=$(echo "$VER" | cut -d. -f3)
+          BUILD_NUMBER=$(printf "%02d%02d%02d" "$MAJOR" "$MINOR" "$PATCH")
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+          echo "Build number: $BUILD_NUMBER"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm install
+
+      # ------------------------------------------------------------------ #
+      # 1. Import certificates into a temporary keychain
+      #
+      # Required secrets:
+      #   CORP_MACOS_DIST_CERTIFICATE              – "Apple Distribution" cert (base64 p12)
+      #   CORP_MACOS_DIST_CERTIFICATE_PASSWORD     – p12 password
+      #   CORP_MACOS_INSTALLER_CERTIFICATE         – "3rd Party Mac Developer Installer" cert (base64 p12)
+      #   CORP_MACOS_INSTALLER_CERTIFICATE_PASSWORD – p12 password
+      #   CORP_MACOS_PROVISION_PROFILE             – Mac App Distribution provisioning profile (base64)
+      # ------------------------------------------------------------------ #
+      - name: Import signing certificates
+        env:
+          CORP_MACOS_DIST_CERTIFICATE: ${{ secrets.CORP_MACOS_DIST_CERTIFICATE }}
+          CORP_MACOS_DIST_CERTIFICATE_PASSWORD: ${{ secrets.CORP_MACOS_DIST_CERTIFICATE_PASSWORD }}
+          CORP_MACOS_INSTALLER_CERTIFICATE: ${{ secrets.CORP_MACOS_INSTALLER_CERTIFICATE }}
+          CORP_MACOS_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.CORP_MACOS_INSTALLER_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Import Apple Distribution cert
+          echo "$CORP_MACOS_DIST_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/dist.p12
+          security import $RUNNER_TEMP/dist.p12 \
+            -P "$CORP_MACOS_DIST_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+
+          # Import Mac Installer Distribution cert
+          echo "$CORP_MACOS_INSTALLER_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/installer.p12
+          security import $RUNNER_TEMP/installer.p12 \
+            -P "$CORP_MACOS_INSTALLER_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          # Prepend temp keychain while keeping system/login keychains in the chain
+          security list-keychain -d user -s $KEYCHAIN_PATH $(security list-keychains -d user | tr -d '" ')
+
+          # Resolve signing identities
+          DIST_IDENTITY=$(security find-identity -v -p codesigning $KEYCHAIN_PATH \
+            | grep "Apple Distribution" | head -1 | awk -F'"' '{print $2}')
+          INSTALLER_IDENTITY=$(security find-identity -v -p basic $KEYCHAIN_PATH \
+            | grep -E "Mac Installer Distribution|3rd Party Mac Developer Installer" | head -1 | awk -F'"' '{print $2}')
+
+          # Extract SHA-1 of the Apple Distribution cert for later validation
+          DIST_CERT_SHA1=$(security find-identity -v -p codesigning $KEYCHAIN_PATH \
+            | grep "Apple Distribution" | head -1 | awk '{print $2}')
+
+          echo "DIST_IDENTITY=$DIST_IDENTITY"         >> $GITHUB_ENV
+          echo "INSTALLER_IDENTITY=$INSTALLER_IDENTITY" >> $GITHUB_ENV
+          echo "DIST_CERT_SHA1=$DIST_CERT_SHA1"         >> $GITHUB_ENV
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH"           >> $GITHUB_ENV
+          echo "App signing identity    : $DIST_IDENTITY"
+          echo "Installer signing identity: $INSTALLER_IDENTITY"
+          echo "App Distribution cert SHA-1: $DIST_CERT_SHA1"
+
+      # ------------------------------------------------------------------ #
+      # 2. Build with Wails
+      # ------------------------------------------------------------------ #
+      - name: Build app
+        env:
+          VITE_APPSTORE_BUILD: 'true'
+        run: |
+          wails build -platform darwin/universal -trimpath -ldflags "-s -w"
+
+      # ------------------------------------------------------------------ #
+      # 3. Inject version & build number into Info.plist
+      # ------------------------------------------------------------------ #
+      - name: Set version in Info.plist
+        run: |
+          PLIST="build/bin/${{ env.APP_NAME }}.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ env.APP_VERSION }}" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ env.BUILD_NUMBER }}"         "$PLIST"
+          echo "Version set to ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }})"
+
+      # ------------------------------------------------------------------ #
+      # 4. Embed provisioning profile
+      #    Required to pass TestFlight validation (ITMS-90889).
+      #    Must happen BEFORE codesign so the profile is included in the
+      #    code signature. --deep would strip it, so we sign inside-out.
+      # ------------------------------------------------------------------ #
+      - name: Embed provisioning profile
+        env:
+          CORP_MACOS_PROVISION_PROFILE: ${{ secrets.CORP_MACOS_PROVISION_PROFILE }}
+        run: |
+          APP_PATH="build/bin/${{ env.APP_NAME }}.app"
+          echo "$CORP_MACOS_PROVISION_PROFILE" | base64 --decode \
+            > "$APP_PATH/Contents/embedded.provisionprofile"
+          echo "Provisioning profile embedded:"
+          ls -lh "$APP_PATH/Contents/embedded.provisionprofile"
+
+      # ------------------------------------------------------------------ #
+      # 5. Sign the .app with Apple Distribution certificate
+      #    Inside-out order (frameworks → helpers → bundle) is required.
+      #    Do NOT use --deep: it re-signs nested content and can invalidate
+      #    the embedded provisioning profile.
+      # ------------------------------------------------------------------ #
+      - name: Sign app bundle
+        run: |
+          APP_PATH="build/bin/${{ env.APP_NAME }}.app"
+          ENTITLEMENTS="build/darwin/entitlements.plist"
+          PROFILE="$APP_PATH/Contents/embedded.provisionprofile"
+
+          # Extract the entitlements embedded in the provisioning profile.
+          # These contain com.apple.application-identifier (TEAMID.bundleid) and
+          # com.apple.developer.team-identifier which MUST be present in the signed
+          # binary for TestFlight to accept it (ITMS-90886).
+          security cms -D -i "$PROFILE" > /tmp/decoded_profile.plist
+          /usr/libexec/PlistBuddy -x \
+            -c "Print :Entitlements" /tmp/decoded_profile.plist \
+            > /tmp/profile_entitlements.plist
+          
+          # Merge the profile entitlements with our app's entitlements (sandbox, network, etc.)
+          # Extract the two required keys from the profile and inject them into a copy
+          # of our entitlements file, so sandbox/network entitlements are preserved.
+          cp "$ENTITLEMENTS" /tmp/merged_entitlements.plist
+
+          APP_ID=$(/usr/libexec/PlistBuddy \
+            -c "Print :Entitlements:com.apple.application-identifier" \
+            /tmp/decoded_profile.plist)
+          TEAM_ID=$(/usr/libexec/PlistBuddy \
+            -c "Print :Entitlements:com.apple.developer.team-identifier" \
+            /tmp/decoded_profile.plist)
+
+          /usr/libexec/PlistBuddy \
+            -c "Add :com.apple.application-identifier string $APP_ID" \
+            /tmp/merged_entitlements.plist 2>/dev/null || \
+          /usr/libexec/PlistBuddy \
+            -c "Set :com.apple.application-identifier $APP_ID" \
+            /tmp/merged_entitlements.plist
+
+          /usr/libexec/PlistBuddy \
+            -c "Add :com.apple.developer.team-identifier string $TEAM_ID" \
+            /tmp/merged_entitlements.plist 2>/dev/null || \
+          /usr/libexec/PlistBuddy \
+            -c "Set :com.apple.developer.team-identifier $TEAM_ID" \
+            /tmp/merged_entitlements.plist
+
+          echo "--- Merged Entitlements ---"
+          cat /tmp/merged_entitlements.plist
+
+          # Resolve the bundle identifier from Info.plist
+          APP_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" \
+            "$APP_PATH/Contents/Info.plist")
+          echo "Bundle identifier: $APP_BUNDLE_ID"
+
+          # 1. Sign nested frameworks (basic entitlements are fine here)
+          find "$APP_PATH/Contents/Frameworks" \
+            \( -name "*.framework" -o -name "*.dylib" \) 2>/dev/null | \
+            while read lib; do
+              codesign --force --options runtime \
+                --entitlements "$ENTITLEMENTS" \
+                --keychain "$KEYCHAIN_PATH" \
+                --sign "$DIST_IDENTITY" "$lib" || true
+            done
+
+          # 2. Sign helper binaries (everything in MacOS/ except the main executable)
+          find "$APP_PATH/Contents/MacOS" -type f \
+            ! -name "${{ env.APP_NAME }}" 2>/dev/null | \
+            while read bin; do
+              codesign --force --options runtime \
+                --entitlements "$ENTITLEMENTS" \
+                --keychain "$KEYCHAIN_PATH" \
+                --sign "$DIST_IDENTITY" "$bin" || true
+            done
+
+          # 3. Sign the main app bundle last using the merged entitlements.
+          #    This ensures com.apple.application-identifier is signed into the
+          #    bundle, which TestFlight requires (ITMS-90886), while keeping sandbox.
+          codesign --force --options runtime \
+            --entitlements /tmp/merged_entitlements.plist \
+            --keychain "$KEYCHAIN_PATH" \
+            --identifier "$APP_BUNDLE_ID" \
+            --sign "$DIST_IDENTITY" \
+            "$APP_PATH"
+
+          # Verify
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          # Assert profile is still present after signing
+          test -f "$APP_PATH/Contents/embedded.provisionprofile" || \
+            { echo "ERROR: embedded.provisionprofile missing after codesign!"; exit 1; }
+          # Confirm sandbox entitlement
+          codesign -d --entitlements - "$APP_PATH/Contents/MacOS/${{ env.APP_NAME }}" | grep app-sandbox
+          echo "App bundle signed and provisioning profile verified"
+
+      # ------------------------------------------------------------------ #
+      # 5a. Validate: cert in keychain must match cert in provisioning profile
+      #     Catches "Missing code-signing certificate" BEFORE uploading.
+      # ------------------------------------------------------------------ #
+      - name: Validate cert matches provisioning profile
+        env:
+          PY_LIST_CERTS: |
+            import plistlib, hashlib, sys
+            with open('/tmp/decoded_profile.plist', 'rb') as f:
+                p = plistlib.load(f)
+            certs = p.get('DeveloperCertificates', [])
+            if not certs:
+                print('ERROR: No DeveloperCertificates found in provisioning profile', file=sys.stderr)
+                sys.exit(1)
+            for c in certs:
+                data = bytes(c) if isinstance(c, bytes) else c.data
+                sha1 = hashlib.sha1(data).hexdigest().upper()
+                print(f'  Profile cert SHA-1: {sha1}')
+          PY_CHECK_CERT: |
+            import plistlib, hashlib, os, sys
+            with open('/tmp/decoded_profile.plist', 'rb') as f:
+                p = plistlib.load(f)
+            certs = p.get('DeveloperCertificates', [])
+            profile_sha1s = set()
+            for c in certs:
+                data = bytes(c) if isinstance(c, bytes) else c.data
+                profile_sha1s.add(hashlib.sha1(data).hexdigest().upper())
+            signing_sha1 = os.environ.get('DIST_CERT_SHA1', '').upper()
+            if not signing_sha1:
+                print('ERROR: DIST_CERT_SHA1 env var is empty', file=sys.stderr)
+                sys.exit(1)
+            if signing_sha1 not in profile_sha1s:
+                print(f'ERROR: Signing cert {signing_sha1} is NOT present in the provisioning profile.', file=sys.stderr)
+                print('Fix: regenerate the provisioning profile in the Apple Developer Portal', file=sys.stderr)
+                print('     to include the Apple Distribution certificate, then update the CORP_MACOS_PROVISION_PROFILE secret.', file=sys.stderr)
+                sys.exit(1)
+            print(f'OK: Signing cert {signing_sha1} is present in the provisioning profile.')
+        run: |
+          APP_PATH="build/bin/${{ env.APP_NAME }}.app"
+          PROFILE="$APP_PATH/Contents/embedded.provisionprofile"
+
+          echo "--- Signing cert SHA-1 from keychain ---"
+          echo "$DIST_CERT_SHA1"
+
+          # Decode the provisioning profile CMS envelope
+          security cms -D -i "$PROFILE" > /tmp/decoded_profile.plist
+
+          echo "--- Certificates listed in provisioning profile ---"
+          echo "$PY_LIST_CERTS" | python3
+
+          echo "--- Checking if signing cert is in the profile ---"
+          echo "$PY_CHECK_CERT" | python3
+
+          echo "Cert/profile validation passed"
+
+      # ------------------------------------------------------------------ #
+      # 6. Package into .pkg with productbuild
+      # ------------------------------------------------------------------ #
+      - name: Create PKG installer
+        run: |
+          PKG_NAME="${{ env.APP_NAME }}-${{ env.APP_VERSION }}-universal.pkg"
+          APP_PATH="build/bin/${{ env.APP_NAME }}.app"
+
+          if [ -z "$INSTALLER_IDENTITY" ]; then
+            echo "ERROR: INSTALLER_IDENTITY is empty. Check that CORP_MACOS_INSTALLER_CERTIFICATE is set correctly."
+            security find-identity -v -p basic $RUNNER_TEMP/app-signing.keychain-db || true
+            exit 1
+          fi
+          echo "Using installer identity: $INSTALLER_IDENTITY"
+
+          productbuild \
+            --component "$APP_PATH" /Applications \
+            --sign "$INSTALLER_IDENTITY" \
+            "$PKG_NAME"
+
+          echo "PKG_NAME=$PKG_NAME" >> $GITHUB_ENV
+          echo "PKG created: $PKG_NAME"
+
+      # ------------------------------------------------------------------ #
+      # 7. Verify PKG signature
+      # ------------------------------------------------------------------ #
+      - name: Verify PKG signature
+        run: |
+          pkgutil --check-signature "${{ env.PKG_NAME }}"
+          echo "PKG signature verified"
+
+      # ------------------------------------------------------------------ #
+      # 8. Upload PKG to App Store Connect (TestFlight / App Review)
+      #
+      # Uses xcrun altool (available without extra install).
+      # Alternatively set USE_NOTARYTOOL=true to use notarytool upload.
+      # ------------------------------------------------------------------ #
+      - name: Upload to App Store Connect
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          BUNDLE_ID: ${{ secrets.BUNDLE_ID }}
+          APPLE_APP_ID: ${{ secrets.APPLE_APP_ID }}
+        run: |
+          echo "Uploading ${{ env.PKG_NAME }} to App Store Connect..."
+          xcrun altool --upload-package "${{ env.PKG_NAME }}" \
+            --type macos \
+            --apple-id "$APPLE_APP_ID" \
+            --bundle-id "$BUNDLE_ID" \
+            --bundle-version "${{ env.BUILD_NUMBER }}" \
+            --bundle-short-version-string "${{ env.APP_VERSION }}" \
+            --username "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --asc-provider "$APPLE_TEAM_ID" \
+            --verbose
+          echo "Upload complete — check App Store Connect for processing status"
+
+      # ------------------------------------------------------------------ #
+      # 9. Save PKG as workflow artifact (optional backup)
+      # ------------------------------------------------------------------ #
+
+      - name: Upload PKG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-appstore-universal-${{ env.APP_VERSION }}
+          path: ${{ env.PKG_NAME }}
+          retention-days: 14
