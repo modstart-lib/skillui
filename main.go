@@ -14,6 +14,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+
+	"skillui/internal/platform"
 )
 
 //go:embed all:frontend/dist
@@ -154,7 +156,7 @@ func main() {
 			OnSecondInstanceLaunch: func(secondInstanceData options.SecondInstanceData) {
 				if globalApp != nil && globalApp.ctx != nil {
 					// Show Dock icon first (macOS)
-					ShowDockIcon()
+					platform.ShowDockIcon()
 					// Show the window
 					runtime.WindowShow(globalApp.ctx)
 					if goruntime.GOOS == "darwin" {

@@ -18,8 +18,8 @@
 import { Wrench } from 'lucide-vue-next';
 import { onMounted, ref } from 'vue';
 import { GetSkillDir } from '../../wailsjs/go/main/App';
-import SkillSettingIDE from './SkillSetting/IDE.vue';
-import SkillSettingLocation from './SkillSetting/Location.vue';
+import SkillSettingIDE from './SkillSetting/SkillSettingIDE.vue';
+import SkillSettingLocation from './SkillSetting/SkillSettingLocation.vue';
 
 const defaultSkillDir = ref('');
 

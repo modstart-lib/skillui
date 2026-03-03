@@ -7,6 +7,7 @@ import (
 
 	"fyne.io/systray"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+"skillui/internal/platform"
 )
 
 // TrayManager manages the system tray icon and menu
@@ -111,7 +112,7 @@ func (t *TrayManager) onExit() {
 func (t *TrayManager) showWindow() {
 	if t.app != nil && t.app.ctx != nil {
 		// Show Dock icon first (macOS)
-		ShowDockIcon()
+		platform.ShowDockIcon()
 		// Then show the window
 		runtime.WindowShow(t.app.ctx)
 		// On macOS, bring window to front

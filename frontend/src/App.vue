@@ -7,7 +7,7 @@ import { computed, onMounted, ref } from 'vue'
 import BrandLogo from './components/BrandLogo.vue'
 import { useAppStore } from './stores/app'
 import { trackVisit } from './utils/analytics'
-import { autoCheckVersion } from './utils/version'
+import { autoCheckVersion, isAppStoreBuild } from './utils/version'
 import SkillsManagement from './views/Manage.vue'
 import SettingsPage from './views/Setting.vue'
 import ToolSettings from './views/SkillSetting.vue'
@@ -22,8 +22,10 @@ onMounted(async () => {
 
   trackVisit('Main')
 
-  // Auto check version after 5 seconds
-  autoCheckVersion(5000)
+  // Auto check version after 5 seconds (disabled for App Store builds)
+  if (!isAppStoreBuild) {
+    autoCheckVersion(5000)
+  }
 })
 
 const antLocale = computed(() => {

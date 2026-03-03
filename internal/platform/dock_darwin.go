@@ -1,6 +1,6 @@
 //go:build darwin
 
-package main
+package platform
 
 /*
 #cgo CFLAGS: -x objective-c
@@ -23,12 +23,11 @@ void showDockIcon() {
 */
 import "C"
 
-// HideDockIcon hides the application from the Dock on macOS
 func HideDockIcon() {
 	C.hideDockIcon()
 }
 
-// ShowDockIcon shows the application in the Dock on macOS
 func ShowDockIcon() {
 	C.showDockIcon()
 }
+

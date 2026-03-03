@@ -16,7 +16,7 @@ import {
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import { useAppStore } from '../stores/app';
 import { trackVisit } from '../utils/analytics';
-import { checkVersionAndPrompt, getAppVersion } from '../utils/version';
+import { checkVersionAndPrompt, getAppVersion, isAppStoreBuild } from '../utils/version';
 
 const appStore = useAppStore()
 
@@ -261,10 +261,10 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <Divider class="section-divider"/>
+      <Divider v-if="!isAppStoreBuild" class="section-divider"/>
 
       <!-- 版本检测 -->
-      <div class="setting-section">
+      <div v-if="!isAppStoreBuild" class="setting-section">
         <div class="section-header">
           <div class="section-icon version-icon">
             <RefreshCw :size="18"/>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { setApiBaseUrl, skillUiDownload, skillUiPaginate } from '@/api';
-import SkillDetailsModal from '@/views/Store/DetailModal.vue';
+import SkillDetailsModal from '@/views/Store/StoreDetailModal.vue';
 import { Button, Input, Pagination, message } from 'ant-design-vue';
 import { Clock, Compass, Download, Flame, Search, SearchX, Tag } from 'lucide-vue-next';
 import { onMounted, ref, watch } from 'vue';

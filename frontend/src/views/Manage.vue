@@ -249,39 +249,39 @@
 </template>
 
 <script setup lang="ts">
-import SkillDetailsModal from '@/views/Manage/DetailModal.vue';
-import SkillSync from '@/views/Manage/SyncModal.vue';
+import SkillDetailsModal from '@/views/Manage/ManageDetailModal.vue';
+import SkillSync from '@/views/Manage/ManageSyncModal.vue';
 import { Button, Input, Modal, message } from 'ant-design-vue';
 import {
-  CheckCircle2,
-  Clock,
-  Eye,
-  FileText,
-  FolderOpen,
-  GitBranch,
-  Hash,
-  Layers,
-  Link2,
-  PackageSearch,
-  Plus,
-  RefreshCw,
-  Search,
-  Trash2,
-  Upload,
-  User,
-  Wrench,
-  Zap
+    CheckCircle2,
+    Clock,
+    Eye,
+    FileText,
+    FolderOpen,
+    GitBranch,
+    Hash,
+    Layers,
+    Link2,
+    PackageSearch,
+    Plus,
+    RefreshCw,
+    Search,
+    Trash2,
+    Upload,
+    User,
+    Wrench,
+    Zap
 } from 'lucide-vue-next';
 import { computed, onMounted, ref, watch } from 'vue';
 import {
-  DeleteSkill,
-  InstallSkillFromGit,
-  InstallSkillFromLocalPath,
-  InstallSkillFromText,
-  InstallSkillFromUrl,
-  ListLocalSkills,
-  SelectDirectory,
-  SelectZipFile
+    DeleteSkill,
+    InstallSkillFromGit,
+    InstallSkillFromLocalPath,
+    InstallSkillFromText,
+    InstallSkillFromUrl,
+    ListLocalSkills,
+    SelectDirectory,
+    SelectZipFile
 } from '../../wailsjs/go/main/App';
 import { useAppStore } from '../stores/app';
 

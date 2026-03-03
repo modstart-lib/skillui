@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
+    "skillui/internal/platform"
 	"time"
 
 	"skillui/internal/config"
@@ -26,6 +27,8 @@ import (
 const (
 	AppName        = "skillui"
 	AppDisplayName = "SkillUI"
+	// DefaultSlogan is the application slogan used in UI and metadata
+	DefaultSlogan  = "Skills Manager"
 )
 
 // App struct
@@ -518,8 +521,8 @@ var appConfig = struct {
 }{
 	Name:            "SkillUI",
 	Title:           "SkillUI",
-	Slogan:          "Skills Manager",
-	Version:         "v0.1.0",
+	Slogan:          DefaultSlogan,
+	Version:         "v0.2.0",
 	Website:         baseURL,
 	WebsiteGithub:   "https://github.com/modstart-lib/skillui",
 	WebsiteGitee:    "https://gitee.com/modstart-lib/skillui",
@@ -696,7 +699,7 @@ func (a *App) ShowWindow() {
 func (a *App) HideWindow() {
 	runtime.WindowHide(a.ctx)
 	// Hide Dock icon on macOS
-	HideDockIcon()
+	platform.HideDockIcon()
 }
 
 // QuitApp quits the application
