@@ -11,3 +11,4 @@
 - Updated application and tray icons; added new logo assets and removed outdated logo files. 更新应用和托盘图标；添加新的 logo 资源并移除过时的 logo 文件。
 - Removed legacy dock_* files from project root (cleanup). 从项目根目录删除遗留的 dock_* 文件 (清理)。
 - Renamed page-specific Vue components with parent page prefixes and updated import paths. 重命名页面专属 Vue 组件为带有父页面前缀，并更新导入路径。
+- Added LSApplicationCategoryType and ITSAppUsesNonExemptEncryption keys to macOS Info.plist for proper app categorization and encryption declaration. 在 macOS Info.plist 中添加 LSApplicationCategoryType 和 ITSAppUsesNonExemptEncryption 键，用于正确的应用分类和加密声明。

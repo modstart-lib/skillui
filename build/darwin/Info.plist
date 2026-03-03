@@ -59,10 +59,14 @@
           {{end}}
         </array>
         {{end}}
+        <key>LSApplicationCategoryType</key>
+        <string>public.app-category.utilities</string>
         <key>NSAppTransportSecurity</key>
         <dict>
             <key>NSAllowsArbitraryLoads</key>
             <true/>
         </dict>
+        <key>ITSAppUsesNonExemptEncryption</key>
+        <false/>
     </dict>
 </plist>
