@@ -41,6 +41,21 @@ type App struct {
 	loggers      map[string]*ProcessLogger
 	autoStartMgr *service.AutoStartManager
 	systemLogger *logging.RollingStore
+	dataDir      string
+}
+
+// getAppDataDir returns the platform-appropriate app data directory.
+// On macOS, uses ~/Library/Application Support/SkillUI to comply with
+// App Sandbox guidelines (user files should not live in the hidden container).
+// On other platforms, falls back to ~/.skillui.
+func getAppDataDir() string {
+	if goruntime.GOOS == "darwin" {
+		if configDir, err := os.UserConfigDir(); err == nil {
+			return filepath.Join(configDir, "SkillUI")
+		}
+	}
+	homeDir, _ := os.UserHomeDir()
+	return filepath.Join(homeDir, ".skillui")
 }
 
 // ProcessLogger holds the logger for a specific process
@@ -51,8 +66,18 @@ type ProcessLogger struct {
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	homeDir, _ := os.UserHomeDir()
-	dataDir := filepath.Join(homeDir, ".skillui")
+	dataDir := getAppDataDir()
+
+	// Migrate old ~/.skillui data to new location on macOS (one-time migration)
+	if goruntime.GOOS == "darwin" {
+		homeDir, _ := os.UserHomeDir()
+		oldDir := filepath.Join(homeDir, ".skillui")
+		if _, err := os.Stat(oldDir); err == nil {
+			if _, err2 := os.Stat(dataDir); os.IsNotExist(err2) {
+				os.Rename(oldDir, dataDir)
+			}
+		}
+	}
 
 	return &App{
 		pm:           process.NewManager(),
@@ -60,6 +85,7 @@ func NewApp() *App {
 		logHub:       logging.NewStreamHub(100),
 		loggers:      make(map[string]*ProcessLogger),
 		autoStartMgr: service.NewAutoStartManager(AppName, AppDisplayName),
+		dataDir:      dataDir,
 	}
 }
 
@@ -73,8 +99,7 @@ func (a *App) startup(ctx context.Context) {
 	if err != nil {
 		cfg = config.DefaultConfig()
 		// Initialize system logger first before logging errors
-		homeDir, _ := os.UserHomeDir()
-		systemLogDir := filepath.Join(homeDir, ".skillui", "system_logs")
+		systemLogDir := filepath.Join(a.dataDir, "system_logs")
 		os.MkdirAll(systemLogDir, 0755)
 		a.systemLogger = logging.NewRollingStore(systemLogDir, 1000, 10)
 		a.LogSystemError("startup", fmt.Sprintf("Failed to load config, using default: %v", err))
@@ -85,11 +110,10 @@ func (a *App) startup(ctx context.Context) {
 	if a.config.LogDir == "" {
 		a.config.LogDir = "logs"
 	}
-	homeDir, _ := os.UserHomeDir()
-	logDir := filepath.Join(homeDir, ".skillui", a.config.LogDir)
+	logDir := filepath.Join(a.dataDir, a.config.LogDir)
 	os.MkdirAll(logDir, 0755)
 	// Initialize system logger
-	systemLogDir := filepath.Join(homeDir, ".skillui", "system_logs")
+	systemLogDir := filepath.Join(a.dataDir, "system_logs")
 	os.MkdirAll(systemLogDir, 0755)
 	a.systemLogger = logging.NewRollingStore(systemLogDir, 1000, 10)
 	// Set up log callback for process manager
@@ -154,8 +178,7 @@ func (a *App) AddProcess(def process.Definition) error {
 	a.pm.Register(def)
 
 	// Create logger for this process
-	homeDir, _ := os.UserHomeDir()
-	logDir := filepath.Join(homeDir, ".skillui", a.config.LogDir, def.ID)
+	logDir := filepath.Join(a.dataDir, a.config.LogDir, def.ID)
 	a.loggers[def.ID] = &ProcessLogger{
 		store: logging.NewRollingStore(logDir, a.config.MaxLogLines, a.config.MaxLogFiles),
 		hub:   logging.NewStreamHub(100),
@@ -418,8 +441,7 @@ func (a *App) GetSystemLogs() (string, error) {
 	var logs strings.Builder
 
 	// Collect application system logs
-	homeDir, _ := os.UserHomeDir()
-	systemLogDir := filepath.Join(homeDir, ".skillui", "system_logs")
+	systemLogDir := filepath.Join(a.dataDir, "system_logs")
 
 	logs.WriteString("=== Application System Logs ===\n")
 	if entries, err := os.ReadDir(systemLogDir); err == nil {
@@ -522,7 +544,7 @@ var appConfig = struct {
 	Name:            "SkillUI",
 	Title:           "SkillUI",
 	Slogan:          DefaultSlogan,
-	Version:         "v0.2.0",
+	Version:         "v0.2.1",
 	Website:         baseURL,
 	WebsiteGithub:   "https://github.com/modstart-lib/skillui",
 	WebsiteGitee:    "https://gitee.com/modstart-lib/skillui",

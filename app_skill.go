@@ -85,12 +85,17 @@ func expandHome(path string) string {
 	return path
 }
 
-// getSkillDir returns the expanded skill directory path
+// getSkillDir returns the expanded skill directory path.
+// On macOS the default is ~/Documents/SkillUI so that skills are stored in a
+// user-accessible location, satisfying App Sandbox Guideline 2.4.5(i).
 func (a *App) getSkillDir() string {
 	if a.config.SkillDir != "" {
 		return expandHome(a.config.SkillDir)
 	}
 	homeDir, _ := os.UserHomeDir()
+	if goruntime.GOOS == "darwin" {
+		return filepath.Join(homeDir, "Documents", "SkillUI")
+	}
 	return filepath.Join(homeDir, ".skillui", "skills")
 }
 
