@@ -354,13 +354,17 @@ func (a *App) InstallSkillFromUrl(url, name string) error {
 		return fmt.Errorf("下载失败: %w", err)
 	}
 	defer resp.Body.Close()
-	if _, err = io.Copy(tmpFile, resp.Body); err != nil {
+	size, err := io.Copy(tmpFile, resp.Body)
+	if err != nil {
 		return fmt.Errorf("写入临时文件失败: %w", err)
 	}
-	tmpFile.Close()
-
+	// 在 macOS App Sandbox 中，关闭文件后再用路径重新 open 会触发 EPERM。
+	// 直接 Seek 回头部，用已有句柄传给 extractZipReader，避免重新打开。
+	if _, err = tmpFile.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("读取临时文件失败: %w", err)
+	}
 	destDir := filepath.Join(skillDir, name)
-	return extractZip(tmpFile.Name(), destDir)
+	return extractZipReader(tmpFile, size, destDir)
 }
 
 // findSkillDirs recursively walks rootDir and returns all directories containing
@@ -539,20 +543,20 @@ func (a *App) DeleteSkill(name string) error {
 }
 
 // extractZip extracts a zip file to destDir, auto-handling single-root nesting
-func extractZip(zipPath, destDir string) error {
-	r, err := zip.OpenReader(zipPath)
+// extractZipReader extracts zip content from an io.ReaderAt of the given size to destDir.
+// Using an already-open reader avoids reopening by path, which can fail under macOS App Sandbox.
+func extractZipReader(r io.ReaderAt, size int64, destDir string) error {
+	zr, err := zip.NewReader(r, size)
 	if err != nil {
 		return fmt.Errorf("无法打开ZIP: %w", err)
 	}
-	defer r.Close()
 
 	// Detect common root prefix
 	rootPrefix := ""
-	for _, f := range r.File {
+	for _, f := range zr.File {
 		name := filepath.ToSlash(f.Name)
 		parts := strings.SplitN(name, "/", 2)
 		if len(parts) < 2 {
-			// file at root level, no common prefix
 			rootPrefix = ""
 			break
 		}
@@ -568,9 +572,8 @@ func extractZip(zipPath, destDir string) error {
 		return err
 	}
 
-	for _, f := range r.File {
+	for _, f := range zr.File {
 		name := filepath.ToSlash(f.Name)
-		// Strip common root prefix
 		if rootPrefix != "" {
 			prefix := rootPrefix + "/"
 			if strings.HasPrefix(name, prefix) {
@@ -616,6 +619,20 @@ func extractZip(zipPath, destDir string) error {
 		}
 	}
 	return nil
+}
+
+// extractZip extracts a zip file (by path) to destDir.
+func extractZip(zipPath, destDir string) error {
+	f, err := os.Open(zipPath)
+	if err != nil {
+		return fmt.Errorf("无法打开ZIP: %w", err)
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	return extractZipReader(f, info.Size(), destDir)
 }
 
 // ideToolDefs returns the list of known IDE tools with per-platform detection rules
