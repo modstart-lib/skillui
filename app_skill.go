@@ -342,11 +342,15 @@ func (a *App) InstallSkillFromUrl(url, name string) error {
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		return err
 	}
-	tmpFile, err := os.CreateTemp("", "skill-*.zip")
+	// 将临时文件创建在 skillDir 下（~/Documents/SkillUI），该目录已在 macOS App Sandbox
+	// 的授权范围内，避免用 os.TempDir()（/var/folders/...）触发 EPERM。
+	// 写完后直接 Seek 回头部复用同一文件描述符，无需重新 open 路径。
+	tmpFile, err := os.CreateTemp(skillDir, ".tmp-skill-*.zip")
 	if err != nil {
-		return err
+		return fmt.Errorf("创建临时文件失败: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
 	defer tmpFile.Close()
 
 	resp, err := http.Get(url)
@@ -358,8 +362,6 @@ func (a *App) InstallSkillFromUrl(url, name string) error {
 	if err != nil {
 		return fmt.Errorf("写入临时文件失败: %w", err)
 	}
-	// 在 macOS App Sandbox 中，关闭文件后再用路径重新 open 会触发 EPERM。
-	// 直接 Seek 回头部，用已有句柄传给 extractZipReader，避免重新打开。
 	if _, err = tmpFile.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("读取临时文件失败: %w", err)
 	}
