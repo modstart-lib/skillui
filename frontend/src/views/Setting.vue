@@ -48,10 +48,16 @@ const autoStart = ref(false)
 const appVersion = ref('')
 const feedbackUrl = ref('')
 const showFeedbackModal = ref(false)
+const platform = ref('')
 
 // Load appVersion and config on mount
 onMounted(async () => {
   appVersion.value = await getAppVersion()
+  try {
+    platform.value = await GetPlatform()
+  } catch (e) {
+    console.error('Failed to get platform:', e)
+  }
   try {
     const config = await GetAppConfig()
     if (config && config.feedbackUrl) {
@@ -261,10 +267,10 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <Divider v-if="!isAppStoreBuild" class="section-divider"/>
+      <Divider class="section-divider"/>
 
       <!-- 版本检测 -->
-      <div v-if="!isAppStoreBuild" class="setting-section">
+      <div class="setting-section">
         <div class="section-header">
           <div class="section-icon version-icon">
             <RefreshCw :size="18"/>
@@ -278,6 +284,7 @@ onUnmounted(() => {
           <div class="version-control">
             <span class="current-version">{{ appStore.t('settings.version.currentVersion') }}: {{ appVersion }}</span>
             <Button
+                v-if="!isAppStoreBuild"
                 type="primary"
                 size="small"
                 :loading="versionChecking"
