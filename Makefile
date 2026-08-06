@@ -1,6 +1,10 @@
 # Makefile for SkillUI Wails Application
 
+# 
+
 .PHONY: help dev build clean install check-deps
+
+# 
 
 # Default target
 help:
@@ -10,6 +14,7 @@ help:
 	@echo "  clean    - Clean build artifacts"
 	@echo "  install  - Install dependencies"
 	@echo "  check-deps - Check if required tools are installed"
+
 
 # Check if required tools are installed
 check-deps:
@@ -42,3 +47,5 @@ build_and_install:
 	$(MAKE) build
 	sudo rm -rfv /Applications/SkillUI.app
 	sudo cp -rv build/bin/SkillUI.app /Applications/SkillUI.app
+
+# 
