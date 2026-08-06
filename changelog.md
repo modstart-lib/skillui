@@ -3,6 +3,10 @@
 ### Features
 - Added App Store build flag (VITE_APPSTORE_BUILD) to disable version checks and hide related UI. 为 App Store 构建添加标记 (VITE_APPSTORE_BUILD)，禁用版本检查并隐藏相关界面。
 
+### Improvements
+- Restructured CI workflows into Main / Test / Release pipelines referencing the linkandroid open/pro model; the Main and Release pipelines clone `skillui-pro.git` and build the Pro release artifacts. CI 流水线重构为 Main / Test / Release 三个流程，参考 linkandroid 的开源/pro 模式；Main 和 Release 流程克隆 `skillui-pro.git` 并构建 Pro 版本发布产物。
+- Created `skillui-pro` repository as the Pro source of truth with `publish/` mechanism (ss-publish whitelist + replaces) for syncing to the open version. 创建 `skillui-pro` 仓库作为 Pro 版真源，并通过 `publish/` 机制（ss-publish 白名单 + 替换规则）同步到开源版。
+
 ### Fixes
 - Fixed macOS skill installation failures under App Sandbox by writing temporary ZIP files into the user skill directory instead of the system temp folder. 修复 macOS 在 App Sandbox 下因使用系统临时目录导致技能安装失败的问题，改为将临时 ZIP 写入用户技能目录。
 

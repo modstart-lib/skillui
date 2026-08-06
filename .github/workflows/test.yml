@@ -1,0 +1,207 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-22.04
+            arch: x64
+            wails_platform: linux/amd64
+          - name: linux-arm64
+            os: ubuntu-22.04-arm
+            arch: arm64
+            wails_platform: linux/arm64
+          - name: mac-x64
+            os: macos-latest
+            arch: x64
+            wails_platform: darwin/amd64
+          - name: mac-arm64
+            os: macos-latest
+            arch: arm64
+            wails_platform: darwin/arm64
+          - name: win-x64
+            os: windows-latest
+            arch: x64
+            wails_platform: windows/amd64
+          - name: win-arm64
+            os: windows-11-arm
+            arch: arm64
+            wails_platform: windows/arm64
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Build Prepare (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev
+
+      - name: Build Wails app (Linux)
+        if: runner.os == 'Linux'
+        run: wails build -platform ${{ matrix.wails_platform }} -trimpath -ldflags "-s -w"
+
+      - name: Build Wails app (Windows)
+        if: runner.os == 'Windows'
+        run: wails build -platform ${{ matrix.wails_platform }} -trimpath -ldflags "-s -w" -nsis
+
+      - name: Build Wails app (macOS)
+        if: runner.os == 'macOS'
+        run: wails build -platform ${{ matrix.wails_platform }} -trimpath -ldflags "-s -w"
+
+      - name: Import Code Signing Certificates
+        if: runner.os == 'macOS'
+        env:
+          CORP_MACOS_CERTIFICATE: ${{ secrets.CORP_MACOS_CERTIFICATE }}
+          CORP_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.CORP_MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          echo "$CORP_MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 -P "$CORP_MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          SIGNING_IDENTITY=$(security find-identity -v -p codesigning $KEYCHAIN_PATH | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
+          echo "SIGNING_IDENTITY=$SIGNING_IDENTITY" >> $GITHUB_ENV
+          echo "Found signing identity: $SIGNING_IDENTITY"
+
+      - name: Sign macOS Application
+        if: runner.os == 'macOS'
+        run: |
+          APP_PATH="build/bin/SkillUI.app"
+
+          find "$APP_PATH" -name "*.dylib" -o -name "*.framework" | while read lib; do
+            codesign --force --options runtime --sign "$SIGNING_IDENTITY" "$lib" || true
+          done
+
+          codesign --force --options runtime --sign "$SIGNING_IDENTITY" "$APP_PATH/Contents/MacOS/SkillUI"
+          codesign --force --options runtime --sign "$SIGNING_IDENTITY" "$APP_PATH"
+          codesign --verify --verbose=4 "$APP_PATH"
+
+      - name: Create DMG
+        if: runner.os == 'macOS'
+        run: |
+          brew install create-dmg
+
+          create-dmg \
+            --volname "SkillUI" \
+            --volicon "build/bin/SkillUI.app/Contents/Resources/iconfile.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "SkillUI.app" 150 185 \
+            --hide-extension "SkillUI.app" \
+            --app-drop-link 450 185 \
+            --no-internet-enable \
+            "SkillUI-darwin-${{ matrix.arch }}.dmg" \
+            "build/bin/SkillUI.app" || true
+
+          if [ ! -f "SkillUI-darwin-${{ matrix.arch }}.dmg" ]; then
+            hdiutil create -volname "SkillUI" -srcfolder "build/bin/SkillUI.app" -ov -format UDZO "SkillUI-darwin-${{ matrix.arch }}.dmg"
+          fi
+
+      - name: Sign DMG
+        if: runner.os == 'macOS'
+        run: |
+          codesign --force --sign "$SIGNING_IDENTITY" "SkillUI-darwin-${{ matrix.arch }}.dmg"
+
+      - name: Notarize macOS Application
+        if: runner.os == 'macOS'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool submit "SkillUI-darwin-${{ matrix.arch }}.dmg" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          xcrun stapler staple "SkillUI-darwin-${{ matrix.arch }}.dmg"
+
+      - name: Package Linux build
+        if: runner.os == 'Linux'
+        run: |
+          cd build/bin
+          tar -czf ../../SkillUI-linux-${{ matrix.arch }}.tar.gz SkillUI
+
+      - name: Package Windows build
+        if: runner.os == 'Windows'
+        run: |
+          cd build/bin
+          7z a ../../SkillUI-windows-${{ matrix.arch }}.zip SkillUI.exe
+
+      - name: Upload Artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: skillui-win-${{ matrix.arch }}
+          path: |
+            SkillUI-windows-${{ matrix.arch }}.zip
+            build/bin/*-installer.exe
+
+      - name: Upload Artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: skillui-mac-${{ matrix.arch }}
+          path: SkillUI-darwin-${{ matrix.arch }}.dmg
+
+      - name: Upload Artifact (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: skillui-linux-${{ matrix.arch }}
+          path: SkillUI-linux-${{ matrix.arch }}.tar.gz
+
+  # ── Notify ────────────────────────────────────────────────────────────────────
+  notify:
+    name: Notify
+    needs: [build]
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Notify Webhook
+        run: |
+          NAME="${{ github.event.repository.name }}"
+          TYPE=$(echo "${{ github.workflow }}" | tr '[:upper:]' '[:lower:]')
+          VERSION=$(sed -n 's/.*Version:[[:space:]]*"v\([^"]*\)".*/\1/p' app.go | head -1)
+          curl -X POST "${{ secrets.HOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"event\":\"${NAME}\",\"param\":{\"name\":\"${NAME}\",\"type\":\"${TYPE}\",\"version\":\"${VERSION}\"},\"data\":{\"name\":\"${NAME}\",\"type\":\"${TYPE}\",\"version\":\"${VERSION}\"}}"
