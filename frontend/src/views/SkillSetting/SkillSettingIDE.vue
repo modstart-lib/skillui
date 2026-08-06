@@ -22,7 +22,7 @@
       <div
           v-for="tool in tools"
           :key="tool.id"
-          class="flex flex-col p-4 rounded-lg border transition-all h-full"
+          class="ide-card flex flex-col p-4 rounded-lg border transition-all h-full"
           :class="tool.installed ? 'border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-900/10' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 opacity-70'"
       >
         <div class="flex items-start justify-between mb-4">

@@ -6,12 +6,15 @@ SkillUI 是一款跨平台的 AI 编程助手技能管理桌面应用，基于 W
 
 ## 截图
 
-![](https://ms-assets.modstart.com/data/image/2026/02/26/14585_4g08_7720.png)
+![技能管理主页](demo/image/manage.png)
 
-![](https://ms-assets.modstart.com/data/image/2026/02/26/14808_djax_1635.png)
-![](https://ms-assets.modstart.com/data/image/2026/02/26/14763_mllp_1696.png)
+![技能市场](demo/image/store.png)
 
-![](https://ms-assets.modstart.com/data/image/2026/02/26/14625_csju_6992.png)
+| ![新增技能](demo/image/manage-add.png) | ![技能详情](demo/image/manage-detail.png) |
+|---|---|
+| ![市场详情](demo/image/store-detail.png) | ![工具设置](demo/image/tools.png) |
+
+![设置页](demo/image/setting.png)
 
 ## 功能
 

@@ -194,7 +194,7 @@ const handleInstall = async (skill: any) => {
         <div
             v-for="skill in skills"
             :key="skill.id || skill.name"
-            class="bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 shadow-sm transition-all hover:shadow-md hover:border-emerald-500/30 flex flex-col cursor-pointer relative"
+            class="store-card bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 shadow-sm transition-all hover:shadow-md hover:border-emerald-500/30 flex flex-col cursor-pointer relative"
             @click="viewDetails(skill)"
         >
           <!-- Installed dot -->

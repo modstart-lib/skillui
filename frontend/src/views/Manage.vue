@@ -8,7 +8,7 @@
       </h1>
 
       <!-- Toolbar -->
-      <div class="flex flex-wrap justify-between items-center gap-4 py-2">
+      <div class="header-actions flex flex-wrap justify-between items-center gap-4 py-2">
         <div class="flex items-center gap-2">
           <Button @click="refreshList" :loading="loading" class="flex items-center gap-2">
             <template #icon>
@@ -58,7 +58,7 @@
       <div
           v-for="skill in filteredSkills"
           :key="skill.name"
-          class="bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5 shadow-sm hover:shadow-md transition-all group">
+          class="skill-card bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5 shadow-sm hover:shadow-md transition-all group">
         <div class="flex flex-col gap-4">
           <!-- Top Row: Info + Actions -->
           <div class="flex justify-between items-start">
@@ -90,7 +90,7 @@
               </div>
             </div>
 
-            <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div class="card-actions flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <Button type="text" size="small" @click="viewDetails(skill)" :title="$t('actions.view')"
                       class="text-slate-400 hover:text-emerald-500">
                 <Eye :size="18"/>

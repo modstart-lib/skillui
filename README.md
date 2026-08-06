@@ -6,12 +6,15 @@ SkillUI is a cross-platform desktop GUI for managing AI coding assistant skills.
 
 ## Screenshots
 
-![](https://ms-assets.modstart.com/data/image/2026/02/26/14585_4g08_7720.png)
+![Skill Management](demo/image/manage.png)
 
-![](https://ms-assets.modstart.com/data/image/2026/02/26/14808_djax_1635.png)
-![](https://ms-assets.modstart.com/data/image/2026/02/26/14763_mllp_1696.png)
+![Skill Store](demo/image/store.png)
 
-![](https://ms-assets.modstart.com/data/image/2026/02/26/14625_csju_6992.png)
+| ![Add Skill](demo/image/manage-add.png) | ![Skill Detail](demo/image/manage-detail.png) |
+|---|---|
+| ![Store Detail](demo/image/store-detail.png) | ![Tool Settings](demo/image/tools.png) |
+
+![Settings Page](demo/image/setting.png)
 
 ## Features
 
