@@ -44,16 +44,9 @@ type App struct {
 	dataDir      string
 }
 
-// getAppDataDir returns the platform-appropriate app data directory.
-// On macOS, uses ~/Library/Application Support/SkillUI to comply with
-// App Sandbox guidelines (user files should not live in the hidden container).
-// On other platforms, falls back to ~/.skillui.
+// getAppDataDir returns the unified app data directory.
+// All platforms store data in ~/.skillui for consistency.
 func getAppDataDir() string {
-	if goruntime.GOOS == "darwin" {
-		if configDir, err := os.UserConfigDir(); err == nil {
-			return filepath.Join(configDir, "SkillUI")
-		}
-	}
 	homeDir, _ := os.UserHomeDir()
 	return filepath.Join(homeDir, ".skillui")
 }
@@ -68,13 +61,15 @@ type ProcessLogger struct {
 func NewApp() *App {
 	dataDir := getAppDataDir()
 
-	// Migrate old ~/.skillui data to new location on macOS (one-time migration)
+	// Migrate legacy macOS data directory (~/Library/Application Support/SkillUI)
+	// back to the unified ~/.skillui location (one-time migration)
 	if goruntime.GOOS == "darwin" {
-		homeDir, _ := os.UserHomeDir()
-		oldDir := filepath.Join(homeDir, ".skillui")
-		if _, err := os.Stat(oldDir); err == nil {
-			if _, err2 := os.Stat(dataDir); os.IsNotExist(err2) {
-				os.Rename(oldDir, dataDir)
+		if configDir, err := os.UserConfigDir(); err == nil {
+			oldDir := filepath.Join(configDir, "SkillUI")
+			if _, err := os.Stat(oldDir); err == nil {
+				if _, err2 := os.Stat(dataDir); os.IsNotExist(err2) {
+					os.Rename(oldDir, dataDir)
+				}
 			}
 		}
 	}
@@ -116,6 +111,23 @@ func (a *App) startup(ctx context.Context) {
 	systemLogDir := filepath.Join(a.dataDir, "system_logs")
 	os.MkdirAll(systemLogDir, 0755)
 	a.systemLogger = logging.NewRollingStore(systemLogDir, 1000, 10)
+
+	// Migrate legacy macOS skill directory (~/Documents/SkillUI) to the
+	// unified default ~/.skillui/skills when user hasn't customized it.
+	if goruntime.GOOS == "darwin" && a.config.SkillDir == "" {
+		homeDir, _ := os.UserHomeDir()
+		oldSkillDir := filepath.Join(homeDir, "Documents", "SkillUI")
+		newSkillDir := filepath.Join(a.dataDir, "skills")
+		if _, err := os.Stat(oldSkillDir); err == nil {
+			if _, err2 := os.Stat(newSkillDir); os.IsNotExist(err2) {
+				os.MkdirAll(a.dataDir, 0755)
+				if err3 := os.Rename(oldSkillDir, newSkillDir); err3 == nil {
+					a.LogSystemError("startup", "Migrated skill directory from "+oldSkillDir+" to "+newSkillDir)
+				}
+			}
+		}
+	}
+
 	// Set up log callback for process manager
 	a.pm.SetLogCallback(func(processID, stream, line string) {
 		logger, ok := a.loggers[processID]

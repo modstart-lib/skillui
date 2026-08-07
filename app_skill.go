@@ -86,16 +86,12 @@ func expandHome(path string) string {
 }
 
 // getSkillDir returns the expanded skill directory path.
-// On macOS the default is ~/Documents/SkillUI so that skills are stored in a
-// user-accessible location, satisfying App Sandbox Guideline 2.4.5(i).
+// All platforms use the unified default ~/.skillui/skills.
 func (a *App) getSkillDir() string {
 	if a.config.SkillDir != "" {
 		return expandHome(a.config.SkillDir)
 	}
 	homeDir, _ := os.UserHomeDir()
-	if goruntime.GOOS == "darwin" {
-		return filepath.Join(homeDir, "Documents", "SkillUI")
-	}
 	return filepath.Join(homeDir, ".skillui", "skills")
 }
 
@@ -342,7 +338,7 @@ func (a *App) InstallSkillFromUrl(url, name string) error {
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		return err
 	}
-	// 将临时文件创建在 skillDir 下（~/Documents/SkillUI），该目录已在 macOS App Sandbox
+	// 将临时文件创建在 skillDir 下（~/.skillui/skills），该目录在 macOS App Sandbox
 	// 的授权范围内，避免用 os.TempDir()（/var/folders/...）触发 EPERM。
 	// 写完后直接 Seek 回头部复用同一文件描述符，无需重新 open 路径。
 	tmpFile, err := os.CreateTemp(skillDir, ".tmp-skill-*.zip")
