@@ -556,7 +556,7 @@ var appConfig = struct {
 	Name:            "SkillUI",
 	Title:           "SkillUI",
 	Slogan:          DefaultSlogan,
-	Version:         "v0.2.0",
+	Version:         "v0.3.0-beta",
 	Website:         baseURL,
 	WebsiteGithub:   "https://github.com/modstart-lib/skillui",
 	WebsiteGitee:    "https://gitee.com/modstart-lib/skillui",

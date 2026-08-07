@@ -3,9 +3,10 @@ import { setApiBaseUrl, skillUiDownload, skillUiPaginate } from '@/api';
 import SkillDetailsModal from '@/views/Store/StoreDetailModal.vue';
 import { Button, Input, Pagination, message } from 'ant-design-vue';
 import { Clock, Compass, Download, Flame, Search, SearchX, Tag } from 'lucide-vue-next';
-import { onMounted, ref, watch } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { GetAppConfig, InstallSkillFromMarket, ListLocalSkills } from '../../wailsjs/go/main/App';
 import { useAppStore } from '../stores/app';
+import { testActionSet, testActionUnset } from '../utils/test';
 
 const appStore = useAppStore();
 const isDetailsModalOpen = ref(false);
@@ -30,6 +31,74 @@ onMounted(async () => {
     // 使用默认 baseUrl
   }
   await Promise.all([fetchSkills(1), refreshInstalledList()]);
+});
+
+// ── 自动化测试 action（open 版 testActionSet 为空函数，直接保留）──────────
+onMounted(() => {
+    testActionSet('Store.getSkillCount', () => skills.value.length);
+    testActionSet('Store.getSkills', () => skills.value);
+    testActionSet('Store.getActiveFilter', () => activeFilter.value);
+    testActionSet('Store.setActiveFilter', async (params: unknown) => {
+        const { filter } = params as { filter: string };
+        activeFilter.value = filter === 'latest' ? 'latest' : 'hot';
+        await fetchSkills(1);
+        return activeFilter.value;
+    });
+    testActionSet('Store.getKeywords', () => keywords.value);
+    testActionSet('Store.setKeywords', async (params: unknown) => {
+        const { value } = params as { value: string };
+        keywords.value = value;
+        return true;
+    });
+    testActionSet('Store.getTotal', () => total.value);
+    testActionSet('Store.getCurrentPage', () => currentPage.value);
+    testActionSet('Store.isDetailModalOpen', () => isDetailsModalOpen.value);
+    testActionSet('Store.getDetail', () => {
+        if (!selectedSkill.value) return null;
+        return {
+            id: selectedSkill.value.id,
+            name: selectedSkill.value.name,
+            title: appStore.skillTitle(selectedSkill.value),
+            owner: selectedSkill.value.owner,
+            version: selectedSkill.value.version,
+        };
+    });
+    testActionSet('Store.openDetail', async (params: unknown) => {
+        const { id } = params as { id: number };
+        const skill = skills.value.find((s) => s.id === id);
+        if (!skill) throw new Error(`市场技能不存在: ${id}`);
+        viewDetails(skill);
+        return true;
+    });
+    testActionSet('Store.closeDetail', () => {
+        isDetailsModalOpen.value = false;
+        return true;
+    });
+    testActionSet('Store.isInstalled', (params: unknown) => {
+        const { name } = params as { name: string };
+        return installedNames.value.has(name);
+    });
+    testActionSet('Store.getInstallingIds', () => {
+        return Object.keys(installing.value).filter((k) => installing.value[Number(k)]);
+    });
+});
+onUnmounted(() => {
+    testActionUnset([
+        'Store.getSkillCount',
+        'Store.getSkills',
+        'Store.getActiveFilter',
+        'Store.setActiveFilter',
+        'Store.getKeywords',
+        'Store.setKeywords',
+        'Store.getTotal',
+        'Store.getCurrentPage',
+        'Store.isDetailModalOpen',
+        'Store.getDetail',
+        'Store.openDetail',
+        'Store.closeDetail',
+        'Store.isInstalled',
+        'Store.getInstallingIds',
+    ]);
 });
 
 const refreshInstalledList = async () => {

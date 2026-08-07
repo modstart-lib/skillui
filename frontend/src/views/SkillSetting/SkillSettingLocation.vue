@@ -60,9 +60,10 @@
 <script setup lang="ts">
 import { Button, Input, Modal, message } from 'ant-design-vue';
 import { AlertTriangle, Folder, FolderOpen } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { SelectDirectory, SetSkillDir } from '../../../wailsjs/go/main/App';
 import { useAppStore } from '../../stores/app';
+import { testActionSet, testActionUnset } from '../../utils/test';
 
 const appStore = useAppStore();
 
@@ -80,6 +81,42 @@ const newSkillDir = ref('');
 const migrateSkills = ref(true);
 const saving = ref(false);
 const selecting = ref(false);
+
+// ── 自动化测试 action（open 版 testActionSet 为空函数，直接保留）──────────
+onMounted(() => {
+  testActionSet('ToolSettings.isModifyDirModalOpen', () => isModifyDirModalOpen.value);
+  testActionSet('ToolSettings.openModifyDirModal', () => {
+    openModifyDirModal();
+    return true;
+  });
+  testActionSet('ToolSettings.closeModifyDirModal', () => {
+    isModifyDirModalOpen.value = false;
+    return true;
+  });
+  testActionSet('ToolSettings.getNewSkillDir', () => newSkillDir.value);
+  testActionSet('ToolSettings.setNewSkillDir', (params: unknown) => {
+    const { value } = params as { value: string };
+    newSkillDir.value = value;
+    return true;
+  });
+  testActionSet('ToolSettings.getMigrateSkills', () => migrateSkills.value);
+  testActionSet('ToolSettings.setMigrateSkills', (params: unknown) => {
+    const { value } = params as { value: boolean };
+    migrateSkills.value = value;
+    return true;
+  });
+});
+onUnmounted(() => {
+  testActionUnset([
+    'ToolSettings.isModifyDirModalOpen',
+    'ToolSettings.openModifyDirModal',
+    'ToolSettings.closeModifyDirModal',
+    'ToolSettings.getNewSkillDir',
+    'ToolSettings.setNewSkillDir',
+    'ToolSettings.getMigrateSkills',
+    'ToolSettings.setMigrateSkills',
+  ]);
+});
 
 const openModifyDirModal = () => {
   newSkillDir.value = props.modelValue;

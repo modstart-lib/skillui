@@ -42,6 +42,8 @@ type IDEToolInfo struct {
 	Installed     bool   `json:"installed"`
 	Path          string `json:"path"`
 	SkillRulesDir string `json:"skillRulesDir"`
+	// Manual 标记该工具规则目录由用户手动指定
+	Manual bool `json:"manual"`
 }
 
 // skillUIJson is the structure saved as skillui.json inside market-installed skills
@@ -68,6 +70,8 @@ type ideToolDef struct {
 	RulesDirMac   string
 	RulesDirWin   string
 	RulesDirLin   string
+	// ManualRulesDir 用户手动指定的规则目录（覆盖默认 RulesDir）
+	ManualRulesDir string
 }
 
 // expandHome replaces leading ~ with the user's home directory
@@ -326,7 +330,7 @@ func (a *App) ListLocalSkills() ([]SkillMeta, error) {
 		dir := filepath.Join(skillDir, entry.Name())
 		skill := parseSkillMeta(dir)
 		// Detect synced tools
-		skill.SyncedTools = detectSyncedTools(entry.Name(), a.getSkillDir())
+		skill.SyncedTools = detectSyncedTools(entry.Name(), a.getSkillDir(), a.config.ToolPaths)
 		skills = append(skills, skill)
 	}
 	return skills, nil
@@ -518,7 +522,7 @@ func (a *App) InstallSkillFromText(name, content string) error {
 // DeleteSkill removes a skill directory and cleans up all synced tool files
 func (a *App) DeleteSkill(name string) error {
 	// Remove synced files from all IDE tool rules directories
-	defs := ideToolDefs()
+	defs := ideToolDefs(a.config.ToolPaths)
 	for _, def := range defs {
 		rulesDir := def.getRulesDir()
 		if rulesDir == "" {
@@ -633,10 +637,14 @@ func extractZip(zipPath, destDir string) error {
 	return extractZipReader(f, info.Size(), destDir)
 }
 
-// ideToolDefs returns the list of known IDE tools with per-platform detection rules
-func ideToolDefs() []ideToolDef {
+// ideToolDefs returns the list of known IDE tools with per-platform detection rules.
+// manualPaths (toolID -> user-specified rules dir) overrides the default rules dir.
+func ideToolDefs(manualPaths map[string]string) []ideToolDef {
 	home, _ := os.UserHomeDir()
-	return []ideToolDef{
+	if manualPaths == nil {
+		manualPaths = map[string]string{}
+	}
+	defs := []ideToolDef{
 		{
 			ID:   "cursor",
 			Name: "Cursor",
@@ -657,8 +665,8 @@ func ideToolDefs() []ideToolDef {
 			RulesDirLin: filepath.Join(home, ".config", "Cursor", "User", "rules"),
 		},
 		{
-			ID:   "claude_code",
-			Name: "Claude Code",
+			ID:            "claude_code",
+			Name:          "Claude Code",
 			CheckPathsMac: []string{},
 			CheckPathsWin: []string{},
 			CheckPathsLin: []string{},
@@ -769,8 +777,8 @@ func ideToolDefs() []ideToolDef {
 			RulesDirLin: filepath.Join(home, ".config", "goose", "rules"),
 		},
 		{
-			ID:   "gemini_cli",
-			Name: "Gemini CLI",
+			ID:            "gemini_cli",
+			Name:          "Gemini CLI",
 			CheckPathsMac: []string{},
 			CheckPathsWin: []string{},
 			CheckPathsLin: []string{},
@@ -995,7 +1003,97 @@ func ideToolDefs() []ideToolDef {
 			RulesDirWin: filepath.Join(os.Getenv("APPDATA"), "iflow", "rules"),
 			RulesDirLin: filepath.Join(home, ".iflow", "rules"),
 		},
+		{
+			ID:   "continue",
+			Name: "Continue",
+			CheckPathsMac: []string{
+				filepath.Join(home, ".continue"),
+			},
+			CheckPathsWin: []string{
+				filepath.Join(os.Getenv("USERPROFILE"), ".continue"),
+			},
+			CheckPathsLin: []string{
+				filepath.Join(home, ".continue"),
+			},
+			RulesDirMac: filepath.Join(home, ".continue", "rules"),
+			RulesDirWin: filepath.Join(os.Getenv("USERPROFILE"), ".continue", "rules"),
+			RulesDirLin: filepath.Join(home, ".continue", "rules"),
+		},
+		{
+			ID:   "aider",
+			Name: "Aider",
+			CheckPathsMac: []string{
+				filepath.Join(home, ".aider.conf.yml"),
+			},
+			CheckPathsWin: []string{
+				filepath.Join(os.Getenv("USERPROFILE"), ".aider.conf.yml"),
+			},
+			CheckPathsLin: []string{
+				filepath.Join(home, ".aider.conf.yml"),
+			},
+			RulesDirMac: filepath.Join(home, ".config", "aider"),
+			RulesDirWin: filepath.Join(os.Getenv("APPDATA"), "aider"),
+			RulesDirLin: filepath.Join(home, ".config", "aider"),
+		},
+		{
+			ID:   "tabby",
+			Name: "Tabby",
+			CheckPathsMac: []string{
+				filepath.Join(home, ".tabby"),
+			},
+			CheckPathsWin: []string{
+				filepath.Join(os.Getenv("APPDATA"), "tabby"),
+			},
+			CheckPathsLin: []string{
+				filepath.Join(home, ".tabby"),
+			},
+			RulesDirMac: filepath.Join(home, ".tabby", "rules"),
+			RulesDirWin: filepath.Join(os.Getenv("APPDATA"), "tabby", "rules"),
+			RulesDirLin: filepath.Join(home, ".tabby", "rules"),
+		},
+		{
+			ID:   "coco",
+			Name: "Coco",
+			CheckPathsMac: []string{
+				filepath.Join(home, ".coco"),
+			},
+			CheckPathsWin: []string{
+				filepath.Join(os.Getenv("USERPROFILE"), ".coco"),
+			},
+			CheckPathsLin: []string{
+				filepath.Join(home, ".coco"),
+			},
+			RulesDirMac: filepath.Join(home, ".coco", "rules"),
+			RulesDirWin: filepath.Join(os.Getenv("USERPROFILE"), ".coco", "rules"),
+			RulesDirLin: filepath.Join(home, ".coco", "rules"),
+		},
+		{
+			ID:   "mars_code",
+			Name: "MarsCode",
+			CheckPathsMac: []string{
+				"/Applications/MarsCode.app",
+				filepath.Join(home, "Library", "Application Support", "MarsCode"),
+			},
+			CheckPathsWin: []string{
+				filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "MarsCode", "MarsCode.exe"),
+				filepath.Join(os.Getenv("APPDATA"), "MarsCode"),
+			},
+			CheckPathsLin: []string{
+				filepath.Join(home, ".config", "MarsCode"),
+			},
+			RulesDirMac: filepath.Join(home, ".mars-code", "rules"),
+			RulesDirWin: filepath.Join(os.Getenv("APPDATA"), "MarsCode", "User", "rules"),
+			RulesDirLin: filepath.Join(home, ".config", "MarsCode", "User", "rules"),
+		},
 	}
+
+	// 注入用户手动指定的规则目录，覆盖默认值
+	for i := range defs {
+		if p, ok := manualPaths[defs[i].ID]; ok && p != "" {
+			defs[i].ManualRulesDir = expandHome(p)
+		}
+	}
+	return defs
 }
 
 // getCheckPaths returns platform-specific check paths for a tool def
@@ -1010,8 +1108,12 @@ func (def *ideToolDef) getCheckPaths() []string {
 	}
 }
 
-// getRulesDir returns platform-specific rules directory for a tool def
+// getRulesDir returns platform-specific rules directory for a tool def.
+// If user manually specified a path, it takes priority.
 func (def *ideToolDef) getRulesDir() string {
+	if def.ManualRulesDir != "" {
+		return def.ManualRulesDir
+	}
 	switch goruntime.GOOS {
 	case "windows":
 		return def.RulesDirWin
@@ -1033,7 +1135,7 @@ func isCommandInPath(cmd string) (bool, string) {
 
 // ScanIDETools detects installed AI coding tools on the current system
 func (a *App) ScanIDETools() ([]IDEToolInfo, error) {
-	defs := ideToolDefs()
+	defs := ideToolDefs(a.config.ToolPaths)
 	result := make([]IDEToolInfo, 0, len(defs))
 
 	for _, def := range defs {
@@ -1043,6 +1145,18 @@ func (a *App) ScanIDETools() ([]IDEToolInfo, error) {
 			Installed:     false,
 			Path:          "",
 			SkillRulesDir: def.getRulesDir(),
+		}
+
+		// 用户手动指定的路径优先：只要目录存在即视为已安装，并直接作为规则目录
+		if def.ManualRulesDir != "" {
+			if _, err := os.Stat(def.ManualRulesDir); err == nil {
+				tool.Installed = true
+				tool.Path = def.ManualRulesDir
+				tool.SkillRulesDir = def.ManualRulesDir
+				tool.Manual = true
+				result = append(result, tool)
+				continue
+			}
 		}
 
 		// Check command in PATH first (works cross-platform for CLI tools)
@@ -1113,9 +1227,47 @@ func (a *App) ScanIDETools() ([]IDEToolInfo, error) {
 	return result, nil
 }
 
+// GetToolPaths returns all user-specified manual rules dirs (toolID -> path)
+func (a *App) GetToolPaths() map[string]string {
+	if a.config.ToolPaths == nil {
+		return map[string]string{}
+	}
+	return a.config.ToolPaths
+}
+
+// SetToolPath saves a manual rules dir for a tool.
+// The path is validated: it must exist and be a directory.
+func (a *App) SetToolPath(toolID, path string) error {
+	path = strings.TrimSpace(expandHome(path))
+	if path == "" {
+		return fmt.Errorf("路径不能为空")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("路径不存在: %s", path)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("路径不是目录: %s", path)
+	}
+	if a.config.ToolPaths == nil {
+		a.config.ToolPaths = map[string]string{}
+	}
+	a.config.ToolPaths[toolID] = path
+	return a.store.Save(a.config)
+}
+
+// ClearToolPath removes a manual rules dir for a tool, reverting to auto detection
+func (a *App) ClearToolPath(toolID string) error {
+	if a.config.ToolPaths == nil {
+		return nil
+	}
+	delete(a.config.ToolPaths, toolID)
+	return a.store.Save(a.config)
+}
+
 // detectSyncedTools checks which tools have this skill synced to their rules dir
-func detectSyncedTools(skillName, _ string) []string {
-	defs := ideToolDefs()
+func detectSyncedTools(skillName, _ string, manualPaths map[string]string) []string {
+	defs := ideToolDefs(manualPaths)
 	synced := make([]string, 0)
 	for _, def := range defs {
 		rulesDir := def.getRulesDir()
@@ -1142,7 +1294,7 @@ func (a *App) SyncSkillToTools(skillName string, toolIds []string) error {
 		return fmt.Errorf("技能文件不存在: %s", skillMdPath)
 	}
 
-	defs := ideToolDefs()
+	defs := ideToolDefs(a.config.ToolPaths)
 	defMap := make(map[string]ideToolDef, len(defs))
 	for _, d := range defs {
 		defMap[d.ID] = d
@@ -1194,7 +1346,7 @@ func (a *App) SyncSkillToTools(skillName string, toolIds []string) error {
 
 // UnsyncSkillFromTools removes the skill's synced file from each tool's rules dir
 func (a *App) UnsyncSkillFromTools(skillName string, toolIds []string) error {
-	defs := ideToolDefs()
+	defs := ideToolDefs(a.config.ToolPaths)
 	defMap := make(map[string]ideToolDef, len(defs))
 	for _, d := range defs {
 		defMap[d.ID] = d

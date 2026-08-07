@@ -16,10 +16,11 @@
 
 <script setup lang="ts">
 import { Wrench } from 'lucide-vue-next';
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { GetSkillDir } from '../../wailsjs/go/main/App';
 import SkillSettingIDE from './SkillSetting/SkillSettingIDE.vue';
 import SkillSettingLocation from './SkillSetting/SkillSettingLocation.vue';
+import { testActionSet, testActionUnset } from '../utils/test';
 
 const defaultSkillDir = ref('');
 
@@ -29,6 +30,13 @@ onMounted(async () => {
   } catch (e) {
     console.error('Failed to get skill dir', e);
   }
+
+  // ── 自动化测试 action（open 版 testActionSet 为空函数，直接保留）──────────
+  testActionSet('ToolSettings.getSkillDir', () => defaultSkillDir.value);
+});
+
+onUnmounted(() => {
+  testActionUnset('ToolSettings.getSkillDir');
 });
 
 const onSkillDirChanged = (newDir: string) => {

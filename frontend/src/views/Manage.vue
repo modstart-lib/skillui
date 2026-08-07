@@ -272,7 +272,7 @@ import {
     Wrench,
     Zap
 } from 'lucide-vue-next';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
     DeleteSkill,
     InstallSkillFromGit,
@@ -284,6 +284,7 @@ import {
     SelectZipFile
 } from '../../wailsjs/go/main/App';
 import { useAppStore } from '../stores/app';
+import { testActionSet, testActionUnset } from '../utils/test';
 
 const appStore = useAppStore();
 
@@ -343,6 +344,133 @@ const refreshList = async () => {
 };
 
 onMounted(() => refreshList());
+
+// ── 自动化测试 action（open 版 testActionSet 为空函数，直接保留）──────────
+onMounted(() => {
+    testActionSet('Manage.getSkillCount', () => skills.value.length);
+    testActionSet('Manage.getSkills', () => filteredSkills.value);
+    testActionSet('Manage.getSearchQuery', () => searchQuery.value);
+    testActionSet('Manage.setSearchQuery', (params: unknown) => {
+        const { value } = params as { value: string };
+        searchQuery.value = value;
+        return searchQuery.value;
+    });
+    testActionSet('Manage.isInstallModalOpen', () => isInstallModalOpen.value);
+    testActionSet('Manage.openInstallModal', () => {
+        isInstallModalOpen.value = true;
+        return true;
+    });
+    testActionSet('Manage.closeInstallModal', () => {
+        isInstallModalOpen.value = false;
+        return true;
+    });
+    testActionSet('Manage.getActiveInstallTab', () => activeInstallTab.value);
+    testActionSet('Manage.setActiveInstallTab', (params: unknown) => {
+        const { tab } = params as { tab: string };
+        activeInstallTab.value = tab;
+        return activeInstallTab.value;
+    });
+    testActionSet('Manage.getSkillDetail', () => {
+        if (!selectedSkill.value) return null;
+        return {
+            name: selectedSkill.value.name,
+            title: appStore.skillTitle(selectedSkill.value),
+            location: selectedSkill.value.location,
+            syncedTools: selectedSkill.value.syncedTools || [],
+        };
+    });
+    testActionSet('Manage.openDetail', async (params: unknown) => {
+        const { name } = params as { name: string };
+        const skill = skills.value.find((s) => s.name === name);
+        if (!skill) throw new Error(`技能不存在: ${name}`);
+        viewDetails(skill);
+        return true;
+    });
+    testActionSet('Manage.closeDetail', () => {
+        isDetailsModalOpen.value = false;
+        return true;
+    });
+    testActionSet('Manage.isDetailModalOpen', () => isDetailsModalOpen.value);
+    testActionSet('Manage.isSyncModalOpen', () => isSyncModalOpen.value);
+    testActionSet('Manage.openSyncModal', async (params: unknown) => {
+        const { name } = params as { name: string };
+        const skill = skills.value.find((s) => s.name === name);
+        if (!skill) throw new Error(`技能不存在: ${name}`);
+        openSyncModal(skill);
+        return true;
+    });
+    testActionSet('Manage.setLocalPath', (params: unknown) => {
+        const { path } = params as { path: string };
+        localPathSelected.value = path;
+        return true;
+    });
+    testActionSet('Manage.getLocalPath', () => localPathSelected.value);
+    testActionSet('Manage.setRemoteUrl', (params: unknown) => {
+        const { url } = params as { url: string };
+        remoteUrl.value = url;
+        return true;
+    });
+    testActionSet('Manage.getRemoteUrl', () => remoteUrl.value);
+    testActionSet('Manage.isGitUrl', () => isGitUrl.value);
+    testActionSet('Manage.setRemoteName', (params: unknown) => {
+        const { name } = params as { name: string };
+        remoteName.value = name;
+        return true;
+    });
+    testActionSet('Manage.setTextName', (params: unknown) => {
+        const { name } = params as { name: string };
+        textName.value = name;
+        return true;
+    });
+    testActionSet('Manage.setTextContent', (params: unknown) => {
+        const { content } = params as { content: string };
+        textContent.value = content;
+        return true;
+    });
+    testActionSet('Manage.install', async () => {
+        await handleInstall();
+        return true;
+    });
+    testActionSet('Manage.getInstalling', () => installing.value);
+    testActionSet('Manage.deleteSkill', async (params: unknown) => {
+        const { name } = params as { name: string };
+        const skill = skills.value.find((s) => s.name === name);
+        if (!skill) throw new Error(`技能不存在: ${name}`);
+        await DeleteSkill(skill.name);
+        await refreshList();
+        return true;
+    });
+});
+onUnmounted(() => {
+    testActionUnset([
+        'Manage.getSkillCount',
+        'Manage.getSkills',
+        'Manage.getSearchQuery',
+        'Manage.setSearchQuery',
+        'Manage.isInstallModalOpen',
+        'Manage.openInstallModal',
+        'Manage.closeInstallModal',
+        'Manage.getActiveInstallTab',
+        'Manage.setActiveInstallTab',
+        'Manage.getSkillDetail',
+        'Manage.openDetail',
+        'Manage.closeDetail',
+        'Manage.isDetailModalOpen',
+        'Manage.isSyncModalOpen',
+        'Manage.openSyncModal',
+        'Manage.setLocalPath',
+        'Manage.getLocalPath',
+        'Manage.setRemoteUrl',
+        'Manage.getRemoteUrl',
+        'Manage.isGitUrl',
+        'Manage.setRemoteName',
+        'Manage.setTextName',
+        'Manage.setTextContent',
+        'Manage.install',
+        'Manage.getInstalling',
+        'Manage.deleteSkill',
+    ]);
+});
 
 // 监听来自技能市场的安装事件，自动刷新列表
 watch(() => appStore.skillInstallVersion, (val) => {

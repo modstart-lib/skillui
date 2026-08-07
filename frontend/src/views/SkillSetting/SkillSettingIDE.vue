@@ -39,13 +39,14 @@
             </div>
           </div>
 
-          <div v-if="tool.installed" class="shrink-0">
-            <span class="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded font-bold shadow-sm flex items-center gap-1">
+          <div class="shrink-0 flex items-center gap-1.5">
+            <span v-if="tool.manual" class="text-[10px] bg-sky-500 text-white px-1.5 py-0.5 rounded font-bold shadow-sm flex items-center gap-1">
+              <Wrench :size="10"/> {{ $t('toolSettings.manual') }}
+            </span>
+            <span v-if="tool.installed" class="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded font-bold shadow-sm flex items-center gap-1">
               <Check :size="10"/> {{ $t('toolSettings.installed') }}
             </span>
-          </div>
-          <div v-else class="shrink-0">
-            <span class="text-[10px] text-slate-400 dark:text-slate-500">{{ $t('toolSettings.notInstalled') }}</span>
+            <span v-else class="text-[10px] text-slate-400 dark:text-slate-500">{{ $t('toolSettings.notInstalled') }}</span>
           </div>
         </div>
 
@@ -77,18 +78,39 @@
           <div v-else class="h-6 flex items-center text-xs text-slate-400">
             {{ $t('toolSettings.noPath') }}
           </div>
+
+          <!-- Manual path actions -->
+          <div class="flex items-center gap-2 pt-1">
+            <Button size="small" class="!text-xs" @click="openToolPathModal(tool)">
+              {{ tool.manual ? $t('toolSettings.modifyPath') : $t('toolSettings.setPath') }}
+            </Button>
+            <Button v-if="tool.manual" size="small" danger class="!text-xs" @click="handleClearToolPath(tool.id)">
+              {{ $t('toolSettings.clearPath') }}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
+
+    <!-- Manual path modal -->
+    <SkillSettingToolPathModal
+        v-model:visible="toolPathModalVisible"
+        :tool-id="editingToolId"
+        :tool-name="editingToolName"
+        :default-value="editingToolDefaultPath"
+        @saved="onToolPathSaved"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { Button, Switch, message } from 'ant-design-vue';
-import { Box, Check, Code, Command, Monitor, Scan, Terminal, Zap } from 'lucide-vue-next';
-import { onMounted, ref, watch } from 'vue';
-import { GetAutoSyncToolIDs, ScanIDETools, SetAutoSyncToolIDs } from '../../../wailsjs/go/main/App';
+import { Box, Check, Code, Command, Monitor, Scan, Terminal, Wrench, Zap } from 'lucide-vue-next';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { ClearToolPath, GetAutoSyncToolIDs, ScanIDETools, SetAutoSyncToolIDs, SetToolPath } from '../../../wailsjs/go/main/App';
 import { useAppStore } from '../../stores/app';
+import SkillSettingToolPathModal from './SkillSettingToolPathModal.vue';
+import { testActionSet, testActionUnset } from '../../utils/test';
 
 const appStore = useAppStore();
 
@@ -99,6 +121,10 @@ const props = defineProps<{
 const scanning = ref(false);
 const autoSyncIDs = ref<string[]>([]);
 const togglingTools = ref<Record<string, boolean>>({});
+const toolPathModalVisible = ref(false);
+const editingToolId = ref('');
+const editingToolName = ref('');
+const editingToolDefaultPath = ref('');
 
 onMounted(async () => {
   try {
@@ -106,6 +132,62 @@ onMounted(async () => {
   } catch {
     // ignore
   }
+
+  // ── 自动化测试 action（open 版 testActionSet 为空函数，直接保留）──────────
+  testActionSet('ToolSettings.getToolCount', () => tools.value.length);
+  testActionSet('ToolSettings.getInstalledCount', () => tools.value.filter((t) => t.installed).length);
+  testActionSet('ToolSettings.getTools', () => tools.value);
+  testActionSet('ToolSettings.scanTools', async () => {
+    await scanTools();
+    return tools.value.length;
+  });
+  testActionSet('ToolSettings.getAutoSyncIDs', () => autoSyncIDs.value);
+  testActionSet('ToolSettings.setAutoSync', async (params: unknown) => {
+    const { toolId, enabled } = params as { toolId: string; enabled: boolean };
+    await setAutoSync(toolId, enabled);
+    return autoSyncIDs.value.includes(toolId);
+  });
+  testActionSet('ToolSettings.openToolPathModal', (params: unknown) => {
+    const { toolId } = params as { toolId: string };
+    const tool = tools.value.find((t) => t.id === toolId);
+    if (!tool) throw new Error(`工具不存在: ${toolId}`);
+    openToolPathModal(tool);
+    return true;
+  });
+  testActionSet('ToolSettings.isToolPathModalOpen', () => toolPathModalVisible.value);
+  testActionSet('ToolSettings.closeToolPathModal', () => {
+    toolPathModalVisible.value = false;
+    return true;
+  });
+  testActionSet('ToolSettings.setToolPath', async (params: unknown) => {
+    const { toolId, path } = params as { toolId: string; path: string };
+    const tool = tools.value.find((t) => t.id === toolId);
+    if (!tool) throw new Error(`工具不存在: ${toolId}`);
+    await saveToolPath(toolId, path);
+    await scanTools();
+    return true;
+  });
+  testActionSet('ToolSettings.clearToolPath', async (params: unknown) => {
+    const { toolId } = params as { toolId: string };
+    await handleClearToolPath(toolId);
+    return true;
+  });
+});
+
+onUnmounted(() => {
+  testActionUnset([
+    'ToolSettings.getToolCount',
+    'ToolSettings.getInstalledCount',
+    'ToolSettings.getTools',
+    'ToolSettings.scanTools',
+    'ToolSettings.getAutoSyncIDs',
+    'ToolSettings.setAutoSync',
+    'ToolSettings.openToolPathModal',
+    'ToolSettings.isToolPathModalOpen',
+    'ToolSettings.closeToolPathModal',
+    'ToolSettings.setToolPath',
+    'ToolSettings.clearToolPath',
+  ]);
 });
 
 const isAutoSync = (toolId: string) => autoSyncIDs.value.includes(toolId);
@@ -133,6 +215,7 @@ interface Tool {
   installed: boolean;
   path: string;
   skillRulesDir: string;
+  manual: boolean;
 }
 
 const iconMap: Record<string, any> = {
@@ -160,6 +243,11 @@ const iconMap: Record<string, any> = {
   crush: Zap,
   factory_droid: Box,
   iflow: Code,
+  continue: Box,
+  aider: Terminal,
+  tabby: Box,
+  coco: Command,
+  mars_code: Box,
 };
 
 const iconForTool = (id: string) => iconMap[id] || Box;
@@ -176,6 +264,7 @@ const scanTools = async () => {
       installed: t.installed,
       path: t.path,
       skillRulesDir: t.skillRulesDir,
+      manual: t.manual || false,
     }));
     const installedCount = tools.value.filter(t => t.installed).length;
     message.success(appStore.t('toolSettings.scanSuccess', { count: installedCount }));
@@ -183,6 +272,30 @@ const scanTools = async () => {
     message.error(appStore.t('toolSettings.scanFailed', { error: e?.message || String(e) }));
   } finally {
     scanning.value = false;
+  }
+};
+
+const openToolPathModal = (tool: Tool) => {
+  editingToolId.value = tool.id;
+  editingToolName.value = tool.name;
+  editingToolDefaultPath.value = tool.manual ? tool.skillRulesDir : '';
+  toolPathModalVisible.value = true;
+};
+
+const saveToolPath = async (toolId: string, path: string) => {
+  await SetToolPath(toolId, path);
+};
+
+const onToolPathSaved = async (toolId: string) => {
+  await scanTools();
+};
+
+const handleClearToolPath = async (toolId: string) => {
+  try {
+    await ClearToolPath(toolId);
+    await scanTools();
+  } catch (e: any) {
+    message.error(appStore.t('toolSettings.toolPathFailed', { error: e?.message || String(e) }));
   }
 };
 

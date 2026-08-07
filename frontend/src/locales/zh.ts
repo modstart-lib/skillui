@@ -292,6 +292,16 @@ export default {
     confirmSubmit: '确认提交',
     dirUpdated: 'Skill 目录已更新',
     dirUpdateFailed: '修改失败: {error}',
+    manual: '手动',
+    setPath: '手动设置',
+    modifyPath: '修改路径',
+    clearPath: '清除',
+    toolPathTitle: '手动设置规则目录',
+    toolPathLabel: '规则目录路径',
+    toolPathPlaceholder: '请选择或输入该工具的规则目录...',
+    toolPathDesc: '自动扫描无法识别时，可手动指定该工具保存技能规则的目录（如 ~/.cursor/rules）。指定后该工具将视为已安装，并以此目录进行技能同步。',
+    toolPathUpdated: '规则目录已更新',
+    toolPathFailed: '设置失败: {error}',
   },
   skill: {
     detail: {

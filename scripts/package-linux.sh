@@ -3,7 +3,7 @@
 #
 # Usage: scripts/package-linux.sh <goarch> <version>
 #   goarch:  amd64 | arm64
-#   version: e.g. 0.2.0
+#   version: e.g. 0.3.0-beta
 #
 # Requires: wails build output at build/bin/SkillUI, build/appicon.png
 # Outputs:  SkillUI-<version>-linux-<goarch>.deb / .AppImage (repo root)

@@ -1,3 +1,9 @@
+## [unreleased]
+
+- 新增：AI Studio 识别支持手动设置工具规则目录，自动扫描识别不到已安装的 AI IDE 时，可手动指定路径（如 `~/.cursor/rules`），指定后该工具视为已安装并作为技能同步目标。
+- 新增：补充识别主流 AI 编程工具（Continue、Aider、Tabby、Coco、MarsCode），并完善各平台默认检测路径。
+- 新增：前端工具卡片提供"手动设置 / 修改路径 / 清除"操作入口与弹窗，展示手动标记。
+
 ## v0.2.0 App Store 适配完成，跨平台打包全面升级
 
 - 新增：`scripts/package-linux.sh` 用于 Linux 打包（deb + AppImage，不再产出 tar.gz），产物文件名带版本号（如 `SkillUI-0.2.0-linux-amd64.deb` / `.AppImage`）。

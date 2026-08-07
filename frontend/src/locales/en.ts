@@ -274,6 +274,16 @@ export default {
     confirmSubmit: 'Confirm',
     dirUpdated: 'Skill directory updated',
     dirUpdateFailed: 'Update failed: {error}',
+    manual: 'Manual',
+    setPath: 'Set Path',
+    modifyPath: 'Modify',
+    clearPath: 'Clear',
+    toolPathTitle: 'Set Rules Directory Manually',
+    toolPathLabel: 'Rules Directory Path',
+    toolPathPlaceholder: 'Select or enter the rules directory for this tool...',
+    toolPathDesc: 'When auto-detection fails, manually specify the directory where this tool keeps skill rules (e.g. ~/.cursor/rules). The tool will then be treated as installed and used for skill sync.',
+    toolPathUpdated: 'Rules directory updated',
+    toolPathFailed: 'Update failed: {error}',
   },
   skill: {
     detail: {

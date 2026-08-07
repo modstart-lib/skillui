@@ -3,10 +3,12 @@ import { ConfigProvider, theme } from 'ant-design-vue'
 import enUS from 'ant-design-vue/es/locale/en_US'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { Compass, Layers, Settings, Wrench } from 'lucide-vue-next'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import BrandLogo from './components/BrandLogo.vue'
 import { useAppStore } from './stores/app'
 import { trackVisit } from './utils/analytics'
+import { EventsEmit, EventsOff, EventsOn } from '../wailsjs/runtime/runtime'
+import { initTestRegistry, reportTestError, reportTestWarn, testActionSet } from './utils/test'
 import { autoCheckVersion, isAppStoreBuild } from './utils/version'
 import SkillsManagement from './views/Manage.vue'
 import SettingsPage from './views/Setting.vue'
@@ -26,6 +28,72 @@ onMounted(async () => {
   if (!isAppStoreBuild) {
     autoCheckVersion(5000)
   }
+
+  // ── 自动化测试 action（open 版 testActionSet 为空函数，直接保留）────────
+  initTestRegistry({
+    onStartTestMode: () => {
+      // 拦截 ant-design-vue message
+      import('ant-design-vue').then(({ message: antMessage }) => {
+        const _origMsgError = antMessage.error.bind(antMessage)
+        const _origMsgWarning = antMessage.warning.bind(antMessage)
+        ;(antMessage as unknown as Record<string, unknown>).error = (...args: unknown[]) => {
+          const content = typeof args[0] === 'string' ? args[0] : JSON.stringify(args[0])
+          reportTestError(`[message.error] ${content}`)
+          return (_origMsgError as (...a: unknown[]) => unknown)(...args)
+        }
+        ;(antMessage as unknown as Record<string, unknown>).warning = (...args: unknown[]) => {
+          const content = typeof args[0] === 'string' ? args[0] : JSON.stringify(args[0])
+          reportTestWarn(`[message.warning] ${content}`)
+          return (_origMsgWarning as (...a: unknown[]) => unknown)(...args)
+        }
+      })
+    },
+  })
+
+  // 注册 App 级操作
+  testActionSet('App.getTitle', () => document.title)
+  testActionSet('App.getTab', () => activeTab.value)
+  testActionSet('App.switchTab', (params: unknown) => {
+    const { tab } = params as { tab: string }
+    activeTab.value = tab
+    return activeTab.value
+  })
+  testActionSet('App.exists', (params: unknown) => {
+    const { selector } = params as { selector: string }
+    return !!document.querySelector(selector)
+  })
+  testActionSet('App.count', (params: unknown) => {
+    const { selector } = params as { selector: string }
+    return document.querySelectorAll(selector).length
+  })
+  testActionSet('App.getText', (params: unknown) => {
+    const { selector } = params as { selector: string }
+    return document.querySelector(selector)?.textContent?.trim() ?? null
+  })
+  testActionSet('App.click', (params: unknown) => {
+    const { selector } = params as { selector: string }
+    const el = document.querySelector(selector) as HTMLElement | null
+    if (!el) throw new Error(`元素不存在: "${selector}"`)
+    el.click()
+    return true
+  })
+
+  // 监听来自 Go 后端的调用请求（由 HTTP /auto ui-call 转发过来）
+  EventsOn('debug:call', async (data: { id: string; name: string; params: unknown }) => {
+    try {
+      const registry = (window as unknown as Record<string, unknown>).__test as {
+        callAction(name: string, arg?: unknown): Promise<unknown>
+      } | undefined
+      const result = await registry?.callAction(data.name, data.params)
+      EventsEmit('debug:result:' + data.id, { result })
+    } catch (e: unknown) {
+      EventsEmit('debug:result:' + data.id, { error: (e as Error)?.message || String(e) })
+    }
+  })
+})
+
+onUnmounted(() => {
+  EventsOff('debug:call')
 })
 
 const antLocale = computed(() => {

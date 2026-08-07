@@ -91,6 +91,12 @@ func main() {
 	app := NewApp()
 	globalApp = app
 
+	// 测试模式：解析 --auto-test-port 参数（autotest build tag 下生效，否则返回 0）
+	autoTestPort := parseAutoTestPort()
+	if autoTestPort > 0 {
+		go app.startAutoTestServer(autoTestPort)
+	}
+
 	// Create application with options
 	err := wails.Run(&options.App{
 		Title:         "SkillUI",

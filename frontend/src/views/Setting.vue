@@ -17,6 +17,7 @@ import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import { useAppStore } from '../stores/app';
 import { trackVisit } from '../utils/analytics';
 import { checkVersionAndPrompt, getAppVersion, isAppStoreBuild } from '../utils/version';
+import { testActionSet, testActionUnset } from '../utils/test';
 
 const appStore = useAppStore()
 
@@ -183,6 +184,42 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('message', handleFeedbackMessage)
+})
+
+// ── 自动化测试 action（open 版 testActionSet 为空函数，直接保留）──────────
+onMounted(() => {
+  testActionSet('Setting.getThemeMode', () => appStore.isDark ? 'dark' : 'light')
+  testActionSet('Setting.setThemeMode', (params: unknown) => {
+    const { mode } = params as { mode: 'light' | 'dark' }
+    appStore.setTheme(mode === 'dark')
+    return mode
+  })
+  testActionSet('Setting.getLocale', () => appStore.locale)
+  testActionSet('Setting.setLocale', async (params: unknown) => {
+    const { locale } = params as { locale: 'zh' | 'en' }
+    await appStore.setLocale(locale)
+    return appStore.locale
+  })
+  testActionSet('Setting.getAutoStart', () => autoStart.value)
+  testActionSet('Setting.setAutoStart', async (params: unknown) => {
+    const { enabled } = params as { enabled: boolean }
+    await toggleAutoStart(enabled)
+    return autoStart.value
+  })
+  testActionSet('Setting.getAppVersion', () => appVersion.value)
+  testActionSet('Setting.getPlatform', () => platform.value)
+})
+onUnmounted(() => {
+  testActionUnset([
+    'Setting.getThemeMode',
+    'Setting.setThemeMode',
+    'Setting.getLocale',
+    'Setting.setLocale',
+    'Setting.getAutoStart',
+    'Setting.setAutoStart',
+    'Setting.getAppVersion',
+    'Setting.getPlatform',
+  ])
 })
 </script>
 
