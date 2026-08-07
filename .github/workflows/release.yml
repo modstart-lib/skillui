@@ -158,7 +158,6 @@ jobs:
           $VERSION = (Select-String -Path app.go -Pattern 'Version:\s*"v*([^"]*)"').Matches.Groups[1].Value
           echo "VERSION=$VERSION"
           cd build/bin
-          7z a "../../SkillUI-${VERSION}-windows-${{ matrix.goarch }}.zip" SkillUI.exe
           $installer = Get-ChildItem -Filter "*-installer.exe" | Select-Object -First 1
           if ($installer) {
             Rename-Item -Path $installer.FullName -NewName "SkillUI-${VERSION}-${{ matrix.goarch }}-installer.exe"
@@ -250,9 +249,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: skillui-win-${{ matrix.goarch }}
-          path: |
-            code/SkillUI-*-windows-${{ matrix.goarch }}.zip
-            code/build/bin/SkillUI-*-installer.exe
+          path: code/build/bin/SkillUI-*-installer.exe
 
       - name: Upload Artifact (macOS)
         if: runner.os == 'macOS'
@@ -279,12 +276,11 @@ jobs:
           key-secret: ${{ secrets.OSS_2_KEY_SECRET }}
           region: ${{ secrets.OSS_2_REGION }}
           bucket: ${{ secrets.OSS_2_BUCKET }}
-          callbackTitle: 🎉SkillUI-${{ runner.os }}-Release-${{ github.ref_name }}
+          callbackTitle: 📦SkillUI-${{ runner.os }}-Release-${{ github.ref_name }}
           callback: ${{ secrets.REPORT_URL_ME }}
           assets: |
               code/SkillUI-*-linux-*.deb:apps/{random}.bin:{name}.deb
               code/SkillUI-*-linux-*.AppImage:apps/{random}.bin:{name}.AppImage
-              code/SkillUI-*-windows-*.zip:apps/{random}.bin:{name}.zip
               code/build/bin/SkillUI-*-installer.exe:apps/{random}.bin:{name}.exe
               code/SkillUI-*-darwin-*.dmg:apps/{random}.bin:{name}.dmg
 
