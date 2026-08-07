@@ -5,7 +5,8 @@
 - 截图输出采用 linkandroid 的 I18nDocument 格式：`storage/I18nDocument/asset/image/`（常规版 + `.trans.png` 透明版），image.json 含 `url` / `name` / `urlTrans` / `nameTrans`，CDN 路径为 `https://cdn.skillui.com/theme/I18nDocument/asset/image`。
 - 补全 I18nDocument 中文文档：快速开始、技能管理、工具同步、设置四个分类，含 `_README.md` 索引与操作指南，文档引用 CDN 截图。
 - 新增 `make publish-website`，将 `storage/I18nDocument/` 同步到 SkillUI 独立演示站。
-- 新增 `scripts/package-linux.sh` 用于 Linux 打包（tar.gz + deb + AppImage）。
+- 新增 `scripts/package-linux.sh` 用于 Linux 打包（deb + AppImage，不再产出 tar.gz），产物文件名带版本号（如 `SkillUI-0.2.0-linux-amd64.deb` / `.AppImage`）。
+- CI 打包产物文件名统一带版本号：Linux `.deb` / `.AppImage`、Windows `.zip` / `-installer.exe`、macOS `.dmg` 均包含 `<version>` 字段。
 - 在 Makefile 中加入 App Store 签名配置（BUNDLE_ID / 描述文件 / 签名身份）与 `build-devtools` 目标。
 - 补充 `make build-seed-test` 说明：全量测试流水线用于验证构建与全部测试。
 - 为 App Store 构建添加标记 (VITE_APPSTORE_BUILD)，禁用版本检查并隐藏相关界面。

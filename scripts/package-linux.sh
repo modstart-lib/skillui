@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Package SkillUI Linux release: tar.gz + deb + AppImage
+# Package SkillUI Linux release: deb + AppImage
 #
 # Usage: scripts/package-linux.sh <goarch> <version>
 #   goarch:  amd64 | arm64
 #   version: e.g. 0.2.0
 #
 # Requires: wails build output at build/bin/SkillUI, build/appicon.png
-# Outputs:  SkillUI-linux-<goarch>.tar.gz / .deb / .AppImage (repo root)
+# Outputs:  SkillUI-<version>-linux-<goarch>.deb / .AppImage (repo root)
 
 set -euo pipefail
 
@@ -41,10 +41,6 @@ Type=Application
 Categories=Utility;Development;
 '
 
-# ── tar.gz (bare binary, always kept) ──────────────────────────
-(cd build/bin && tar -czf ../../SkillUI-linux-${GOARCH}.tar.gz SkillUI)
-echo "✅ tar.gz: SkillUI-linux-${GOARCH}.tar.gz"
-
 # ── deb (via fpm) ──────────────────────────────────────────────
 if ! command -v fpm >/dev/null 2>&1; then
   echo "Installing fpm..."
@@ -69,9 +65,9 @@ fpm -s dir -t deb \
   --url "https://skillui.com" \
   --license "Apache-2.0" \
   -C "$PKG_DIR" \
-  -p "SkillUI-linux-${GOARCH}.deb" >/dev/null
+  -p "SkillUI-${VERSION}-linux-${GOARCH}.deb" >/dev/null
 rm -rf "$PKG_DIR"
-echo "✅ deb: SkillUI-linux-${GOARCH}.deb"
+echo "✅ deb: SkillUI-${VERSION}-linux-${GOARCH}.deb"
 
 # ── AppImage (via appimagetool) ────────────────────────────────
 if [ ! -f appimagetool ]; then
@@ -89,10 +85,10 @@ printf '%s' "$DESKTOP_CONTENT" > "$APPDIR/skillui.desktop"
 printf '#!/bin/sh\nexec "$(dirname "$0")/usr/bin/skillui" "$@"\n' > "$APPDIR/AppRun"
 chmod +x "$APPDIR/AppRun"
 
-APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool "$APPDIR" "SkillUI-linux-${GOARCH}.AppImage" >/dev/null 2>&1
+APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool "$APPDIR" "SkillUI-${VERSION}-linux-${GOARCH}.AppImage" >/dev/null 2>&1
 rm -rf "$APPDIR"
-echo "✅ AppImage: SkillUI-linux-${GOARCH}.AppImage"
+echo "✅ AppImage: SkillUI-${VERSION}-linux-${GOARCH}.AppImage"
 
 echo ""
 echo "Packaged files:"
-ls -lh SkillUI-linux-${GOARCH}.tar.gz SkillUI-linux-${GOARCH}.deb SkillUI-linux-${GOARCH}.AppImage
+ls -lh SkillUI-${VERSION}-linux-${GOARCH}.deb SkillUI-${VERSION}-linux-${GOARCH}.AppImage

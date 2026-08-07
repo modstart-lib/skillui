@@ -3,7 +3,12 @@ name: Release
 on:
   push:
     tags:
-      - v*.*.*
+      - 'v*.*.*'
+
+env:
+  GO_VERSION: '1.24'
+  NODE_VERSION: '20'
+  APP_NAME: 'SkillUI'
 
 jobs:
   build:
@@ -15,34 +20,28 @@ jobs:
         include:
           - name: linux-x64
             os: ubuntu-22.04
-            arch: x64
-            wails_platform: linux/amd64
+            goarch: amd64
           - name: linux-arm64
             os: ubuntu-22.04-arm
-            arch: arm64
-            wails_platform: linux/arm64
+            goarch: arm64
           - name: mac-x64
             os: macos-latest
-            arch: x64
-            wails_platform: darwin/amd64
+            goarch: amd64
           - name: mac-arm64
             os: macos-latest
-            arch: arm64
-            wails_platform: darwin/arm64
+            goarch: arm64
           - name: win-x64
             os: windows-latest
-            arch: x64
-            wails_platform: windows/amd64
+            goarch: amd64
           - name: win-arm64
             os: windows-11-arm
-            arch: arm64
-            wails_platform: windows/arm64
+            goarch: arm64
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Git clone repo (Linux/macOS)
+      - name: Git clone repo
         if: runner.os == 'Linux' || runner.os == 'macOS'
         env:
           GIT_USER: ${{ secrets.GIT_USER }}
@@ -52,98 +51,152 @@ jobs:
         run: |
           git clone -b main "https://${GIT_USER}:${GIT_PASS}@${GIT_HOST}/${GIT_REPO_BASE}/skillui-pro.git" code
 
-      - name: Git clone repo (Windows)
+      - name: Git clone repo
         if: runner.os == 'Windows'
-        shell: pwsh
         env:
           GIT_USER: ${{ secrets.GIT_USER }}
           GIT_PASS: ${{ secrets.GIT_PASS }}
           GIT_REPO_BASE: ${{ secrets.GIT_REPO_BASE }}
           GIT_HOST: ${{ secrets.GIT_HOST }}
+        shell: pwsh
         run: |
           git clone -b main "https://${env:GIT_USER}:${env:GIT_PASS}@${env:GIT_HOST}/${env:GIT_REPO_BASE}/skillui-pro.git" code
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Install Wails
-        working-directory: code
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
-      - name: Install frontend dependencies
-        working-directory: code/frontend
-        run: npm install
 
       - name: Build Prepare (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev
 
-      - name: Build Wails app (Linux)
-        if: runner.os == 'Linux'
-        working-directory: code
-        run: wails build -platform ${{ matrix.wails_platform }} -trimpath -ldflags "-s -w"
-
-      - name: Build Wails app (Windows)
-        if: runner.os == 'Windows'
-        working-directory: code
-        run: wails build -platform ${{ matrix.wails_platform }} -trimpath -ldflags "-s -w" -nsis
-
-      - name: Build Wails app (macOS)
-        if: runner.os == 'macOS'
-        working-directory: code
-        run: wails build -platform ${{ matrix.wails_platform }} -trimpath -ldflags "-s -w"
-
-      - name: Import Code Signing Certificates
+      - name: Import Code Signing Certificates (macOS)
         if: runner.os == 'macOS'
         env:
           CORP_MACOS_CERTIFICATE: ${{ secrets.CORP_MACOS_CERTIFICATE }}
           CORP_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.CORP_MACOS_CERTIFICATE_PASSWORD }}
         run: |
+          # Create temporary keychain
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
+          # Create keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
+          # Import certificate
           echo "$CORP_MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
           security import $RUNNER_TEMP/certificate.p12 -P "$CORP_MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
 
+          # Find signing identity
           SIGNING_IDENTITY=$(security find-identity -v -p codesigning $KEYCHAIN_PATH | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
           echo "SIGNING_IDENTITY=$SIGNING_IDENTITY" >> $GITHUB_ENV
           echo "Found signing identity: $SIGNING_IDENTITY"
 
-      - name: Sign macOS Application
-        if: runner.os == 'macOS'
+      - name: Install Dependencies (Linux/macOS)
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+        working-directory: code/frontend
+        run: npm install
+
+      - name: Configure Windows build environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "GYP_MSVS_VERSION=2022" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "npm_config_msvs_version=2022" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install Visual Studio Build Tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $params = @(
+            "--add", "Microsoft.VisualStudio.Workload.VCTools",
+            "--includeRecommended"
+          )
+          if ($env:RUNNER_ARCH -eq 'ARM64') {
+            $params += @(
+              "--add", "Microsoft.VisualStudio.Component.VC.ARM64",
+              "--add", "Microsoft.VisualStudio.Component.VC.Tools.ARM64"
+            )
+          }
+          choco install visualstudio2022buildtools --params ($params -join ' ') -y
+
+      - name: Install Dependencies (Windows)
+        if: runner.os == 'Windows'
+        working-directory: code/frontend
+        shell: pwsh
+        run: npm install
+
+      - name: Build Release Files (Linux)
+        if: runner.os == 'Linux'
         working-directory: code
         run: |
+          wails build -platform linux/${{ matrix.goarch }} -trimpath -ldflags "-s -w"
+          VERSION=$(sed -n 's/.*Version:[[:space:]]*"v*\([^"]*\)".*/\1/p' app.go | head -1)
+          bash scripts/package-linux.sh ${{ matrix.goarch }} "$VERSION"
+
+      - name: Build Release Files (Windows)
+        if: runner.os == 'Windows'
+        working-directory: code
+        shell: pwsh
+        run: |
+          wails build -platform windows/${{ matrix.goarch }} -trimpath -ldflags "-s -w" -nsis
+          $VERSION = (Select-String -Path app.go -Pattern 'Version:\s*"v*([^"]*)"').Matches.Groups[1].Value
+          echo "VERSION=$VERSION"
+          cd build/bin
+          7z a "../../SkillUI-${VERSION}-windows-${{ matrix.goarch }}.zip" SkillUI.exe
+          $installer = Get-ChildItem -Filter "*-installer.exe" | Select-Object -First 1
+          if ($installer) {
+            Rename-Item -Path $installer.FullName -NewName "SkillUI-${VERSION}-${{ matrix.goarch }}-installer.exe"
+          }
+          cd ../..
+
+      - name: Build Release Files (macOS)
+        if: runner.os == 'macOS'
+        working-directory: code
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_ARCH: ${{ matrix.goarch }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          wails build -platform darwin/${{ matrix.goarch }} -trimpath -ldflags "-s -w"
+          VERSION=$(sed -n 's/.*Version:[[:space:]]*"v*\([^"]*\)".*/\1/p' app.go | head -1)
+
           APP_PATH="build/bin/SkillUI.app"
 
+          # Sign all frameworks and libraries first
           find "$APP_PATH" -name "*.dylib" -o -name "*.framework" | while read lib; do
             codesign --force --options runtime --sign "$SIGNING_IDENTITY" "$lib" || true
           done
 
+          # Sign the main executable
           codesign --force --options runtime --sign "$SIGNING_IDENTITY" "$APP_PATH/Contents/MacOS/SkillUI"
+
+          # Sign the entire app bundle
           codesign --force --options runtime --sign "$SIGNING_IDENTITY" "$APP_PATH"
+
+          # Verify the signature
           codesign --verify --verbose=4 "$APP_PATH"
 
-      - name: Create DMG
-        if: runner.os == 'macOS'
-        working-directory: code
-        run: |
+          # Create DMG
           brew install create-dmg
-
           create-dmg \
             --volname "SkillUI" \
             --volicon "build/bin/SkillUI.app/Contents/Resources/iconfile.icns" \
@@ -154,71 +207,68 @@ jobs:
             --hide-extension "SkillUI.app" \
             --app-drop-link 450 185 \
             --no-internet-enable \
-            "SkillUI-darwin-${{ matrix.arch }}.dmg" \
+            "SkillUI-${VERSION}-darwin-${{ matrix.goarch }}.dmg" \
             "build/bin/SkillUI.app" || true
 
-          if [ ! -f "SkillUI-darwin-${{ matrix.arch }}.dmg" ]; then
-            hdiutil create -volname "SkillUI" -srcfolder "build/bin/SkillUI.app" -ov -format UDZO "SkillUI-darwin-${{ matrix.arch }}.dmg"
+          # Fallback: if create-dmg fails, use hdiutil
+          if [ ! -f "SkillUI-${VERSION}-darwin-${{ matrix.goarch }}.dmg" ]; then
+            hdiutil create -volname "SkillUI" -srcfolder "build/bin/SkillUI.app" -ov -format UDZO "SkillUI-${VERSION}-darwin-${{ matrix.goarch }}.dmg"
           fi
 
-      - name: Sign DMG
-        if: runner.os == 'macOS'
-        working-directory: code
-        run: |
-          codesign --force --sign "$SIGNING_IDENTITY" "SkillUI-darwin-${{ matrix.arch }}.dmg"
+          # Sign DMG
+          codesign --force --sign "$SIGNING_IDENTITY" "SkillUI-${VERSION}-darwin-${{ matrix.goarch }}.dmg"
 
-      - name: Notarize macOS Application
-        if: runner.os == 'macOS'
-        working-directory: code
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          xcrun notarytool submit "SkillUI-darwin-${{ matrix.arch }}.dmg" \
+          # Notarize
+          xcrun notarytool submit "SkillUI-${VERSION}-darwin-${{ matrix.goarch }}.dmg" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait
 
-          xcrun stapler staple "SkillUI-darwin-${{ matrix.arch }}.dmg"
+          # Staple the notarization ticket
+          xcrun stapler staple "SkillUI-${VERSION}-darwin-${{ matrix.goarch }}.dmg"
 
-      - name: Package Linux build
-        if: runner.os == 'Linux'
-        working-directory: code
+      - name: Set Build Name ( Linux / macOS )
+        if: runner.os == 'Linux' || runner.os == 'macOS'
         run: |
-          cd build/bin
-          tar -czf ../../SkillUI-linux-${{ matrix.arch }}.tar.gz SkillUI
+          DIST_FILE_NAME=${{ runner.os }}-${{ runner.arch }}-v$(date +%Y%m%d_%H%M%S)-${RANDOM}
+          echo ::add-mask::$DIST_FILE_NAME
+          echo DIST_FILE_NAME=$DIST_FILE_NAME >> $GITHUB_ENV
 
-      - name: Package Windows build
+      - name: Set Build Name ( Windows )
         if: runner.os == 'Windows'
-        working-directory: code
+        shell: pwsh
         run: |
-          cd build/bin
-          7z a ../../SkillUI-windows-${{ matrix.arch }}.zip SkillUI.exe
+          $arch = "${{ runner.arch }}"
+          $randomNumber = Get-Random -Minimum 10000 -Maximum 99999
+          $DIST_FILE_NAME = "Windows-$arch-v$(Get-Date -Format 'yyyyMMdd_HHmmss')-$randomNumber"
+          Write-Host "::add-mask::$DIST_FILE_NAME"
+          echo "DIST_FILE_NAME=$DIST_FILE_NAME" >> $env:GITHUB_ENV
 
       - name: Upload Artifact (Windows)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: skillui-win-${{ matrix.arch }}
+          name: skillui-win-${{ matrix.goarch }}
           path: |
-            code/SkillUI-windows-${{ matrix.arch }}.zip
-            code/build/bin/*-installer.exe
+            code/SkillUI-*-windows-${{ matrix.goarch }}.zip
+            code/build/bin/SkillUI-*-installer.exe
 
       - name: Upload Artifact (macOS)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: skillui-mac-${{ matrix.arch }}
-          path: code/SkillUI-darwin-${{ matrix.arch }}.dmg
+          name: skillui-mac-${{ matrix.goarch }}
+          path: code/SkillUI-*-darwin-${{ matrix.goarch }}.dmg
 
       - name: Upload Artifact (Linux)
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: skillui-linux-${{ matrix.arch }}
-          path: code/SkillUI-linux-${{ matrix.arch }}.tar.gz
+          name: skillui-linux-${{ matrix.goarch }}
+          path: |
+            code/SkillUI-*-linux-${{ matrix.goarch }}.deb
+            code/SkillUI-*-linux-${{ matrix.goarch }}.AppImage
 
       - name: Upload to OSS
         id: oss-upload
@@ -232,10 +282,11 @@ jobs:
           callbackTitle: 🎉SkillUI-${{ runner.os }}-Release-${{ github.ref_name }}
           callback: ${{ secrets.REPORT_URL_ME }}
           assets: |
-              code/SkillUI-linux-${{ matrix.arch }}.tar.gz:apps/{random}.bin:{name}.tar.gz
-              code/SkillUI-darwin-${{ matrix.arch }}.dmg:apps/{random}.bin:{name}.dmg
-              code/SkillUI-windows-${{ matrix.arch }}.zip:apps/{random}.bin:{name}.zip
-              code/build/bin/*-installer.exe:apps/{random}.bin:{name}.exe
+              code/SkillUI-*-linux-*.deb:apps/{random}.bin:{name}.deb
+              code/SkillUI-*-linux-*.AppImage:apps/{random}.bin:{name}.AppImage
+              code/SkillUI-*-windows-*.zip:apps/{random}.bin:{name}.zip
+              code/build/bin/SkillUI-*-installer.exe:apps/{random}.bin:{name}.exe
+              code/SkillUI-*-darwin-*.dmg:apps/{random}.bin:{name}.dmg
 
       - name: Save OSS Downloads for Notify
         shell: bash
@@ -243,6 +294,7 @@ jobs:
           OSS_DOWNLOADS: ${{ steps.oss-upload.outputs.downloads }}
         run: |
           if [ -n "${OSS_DOWNLOADS}" ]; then
+            # No echo of the value needed; output is masked by core.setSecret
             echo "${OSS_DOWNLOADS}" > "oss-downloads-${{ matrix.name }}.json"
           else
             echo "{}" > "oss-downloads-${{ matrix.name }}.json"
@@ -305,6 +357,7 @@ jobs:
 
       - name: Notify Webhook
         run: |
+          # Merge all OSS download maps into a single JSON string
           MERGED="{}"
           for f in _oss-downloads/*.json; do
             [ -f "$f" ] || continue
@@ -320,7 +373,7 @@ jobs:
 
           NAME="${{ github.event.repository.name }}"
           TYPE=$(echo "${{ github.workflow }}" | tr '[:upper:]' '[:lower:]')
-          VERSION=$(sed -n 's/.*Version:[[:space:]]*"v\([^"]*\)".*/\1/p' app.go | head -1)
+          VERSION=$(sed -n 's/.*Version:[[:space:]]*"v*\([^"]*\)".*/\1/p' app.go | head -1)
 
           PAYLOAD=$(node -e "
             const p = {

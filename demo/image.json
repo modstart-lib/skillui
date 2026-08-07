@@ -1,0 +1,51 @@
+[
+  {
+    "title": "技能管理主页",
+    "url": "https://cdn.skillui.com/theme/I18nDocument/asset/image/manage.png?t=202608070036",
+    "name": "manage.png",
+    "urlTrans": "https://cdn.skillui.com/theme/I18nDocument/asset/image/manage.trans.png?t=202608070036",
+    "nameTrans": "manage.trans.png"
+  },
+  {
+    "title": "新增技能弹窗",
+    "url": "https://cdn.skillui.com/theme/I18nDocument/asset/image/manage-add.png?t=202608070036",
+    "name": "manage-add.png",
+    "urlTrans": "https://cdn.skillui.com/theme/I18nDocument/asset/image/manage-add.trans.png?t=202608070036",
+    "nameTrans": "manage-add.trans.png"
+  },
+  {
+    "title": "技能详情弹窗",
+    "url": "https://cdn.skillui.com/theme/I18nDocument/asset/image/manage-detail.png?t=202608070036",
+    "name": "manage-detail.png",
+    "urlTrans": "https://cdn.skillui.com/theme/I18nDocument/asset/image/manage-detail.trans.png?t=202608070036",
+    "nameTrans": "manage-detail.trans.png"
+  },
+  {
+    "title": "技能市场主页",
+    "url": "https://cdn.skillui.com/theme/I18nDocument/asset/image/store.png?t=202608070036",
+    "name": "store.png",
+    "urlTrans": "https://cdn.skillui.com/theme/I18nDocument/asset/image/store.trans.png?t=202608070036",
+    "nameTrans": "store.trans.png"
+  },
+  {
+    "title": "市场技能详情弹窗",
+    "url": "https://cdn.skillui.com/theme/I18nDocument/asset/image/store-detail.png?t=202608070036",
+    "name": "store-detail.png",
+    "urlTrans": "https://cdn.skillui.com/theme/I18nDocument/asset/image/store-detail.trans.png?t=202608070036",
+    "nameTrans": "store-detail.trans.png"
+  },
+  {
+    "title": "工具设置页",
+    "url": "https://cdn.skillui.com/theme/I18nDocument/asset/image/tools.png?t=202608070036",
+    "name": "tools.png",
+    "urlTrans": "https://cdn.skillui.com/theme/I18nDocument/asset/image/tools.trans.png?t=202608070036",
+    "nameTrans": "tools.trans.png"
+  },
+  {
+    "title": "设置页",
+    "url": "https://cdn.skillui.com/theme/I18nDocument/asset/image/setting.png?t=202608070036",
+    "name": "setting.png",
+    "urlTrans": "https://cdn.skillui.com/theme/I18nDocument/asset/image/setting.trans.png?t=202608070036",
+    "nameTrans": "setting.trans.png"
+  }
+]
