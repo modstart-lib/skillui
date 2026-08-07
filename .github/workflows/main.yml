@@ -155,17 +155,12 @@ jobs:
         working-directory: code
         shell: pwsh
         run: |
-          wails build -platform windows/${{ matrix.goarch }} -trimpath -ldflags "-s -w" -nsis
+          wails build -platform windows/${{ matrix.goarch }} -trimpath -ldflags "-s -w"
           $VERSION = (Select-String -Path app.go -Pattern 'Version:\s*"v*([^"]*)"').Matches.Groups[1].Value
           echo "VERSION=$VERSION"
           cd build/bin
           # Standalone exe (versioned)
           Copy-Item SkillUI.exe "SkillUI-${VERSION}-windows-${{ matrix.goarch }}.exe"
-          # Installer exe (versioned, if produced)
-          $installer = Get-ChildItem -Filter "*-installer.exe" | Select-Object -First 1
-          if ($installer) {
-            Rename-Item -Path $installer.FullName -NewName "SkillUI-${VERSION}-${{ matrix.goarch }}-installer.exe"
-          }
           Write-Host "=== build/bin contents ==="
           Get-ChildItem | Select-Object Name, Length
           cd ../..
@@ -255,9 +250,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: skillui-win-${{ matrix.goarch }}
-          path: |
-            code/build/bin/SkillUI-*-windows-*.exe
-            code/build/bin/SkillUI-*-installer.exe
+          path: code/build/bin/SkillUI-*-windows-*.exe
 
       - name: Upload Artifact (macOS)
         if: runner.os == 'macOS'
@@ -290,7 +283,6 @@ jobs:
               code/SkillUI-*-linux-*.deb:apps/{random}.bin:{name}.deb
               code/SkillUI-*-linux-*.AppImage:apps/{random}.bin:{name}.AppImage
               code/build/bin/SkillUI-*-windows-*.exe:apps/{random}.bin:{name}.exe
-              code/build/bin/SkillUI-*-installer.exe:apps/{random}.bin:{name}.exe
               code/SkillUI-*-darwin-*.dmg:apps/{random}.bin:{name}.dmg
 
       - name: Save OSS Downloads for Notify
