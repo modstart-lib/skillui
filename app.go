@@ -10,8 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"skillui/internal/platform"
 	"strings"
-    "skillui/internal/platform"
 	"time"
 
 	"skillui/internal/config"
@@ -28,7 +28,7 @@ const (
 	AppName        = "skillui"
 	AppDisplayName = "SkillUI"
 	// DefaultSlogan is the application slogan used in UI and metadata
-	DefaultSlogan  = "Skills Manager"
+	DefaultSlogan = "Skills Manager"
 )
 
 // App struct
@@ -44,11 +44,90 @@ type App struct {
 	dataDir      string
 }
 
+// 数据根目录解析：SKILLUI_DATA_ROOT 环境变量 > ~/.skillui/client.json 的 dataPath > 默认 ~/.skillui/data。
+// 环境变量用于把正式使用数据隔离到独立目录（如安装版通过 macOS Info.plist 的 LSEnvironment 注入），
+// 避免被开发测试的种子数据污染/破坏。
+
+const (
+	// dataRootEnv 是覆盖数据根目录的环境变量名。
+	dataRootEnv = "SKILLUI_DATA_ROOT"
+	// clientConfigName 是客户端级配置文件，固定在 ~/.skillui 下。
+	clientConfigName = "client.json"
+)
+
+// clientConfig 是 ~/.skillui/client.json 的结构，dataPath 记录数据根目录。
+type clientConfig struct {
+	DataPath string `json:"dataPath"`
+}
+
+// loadClientConfig 解析数据根目录，优先级：
+// SKILLUI_DATA_ROOT 环境变量（有值，支持 ~ 展开）> client.json 的 dataPath > 默认 <root>/data。
+// client.json 不存在或 dataPath 为空时，将旧版直接存放在 ~/.skillui 下的数据迁移到默认数据目录，
+// 并写入默认 client.json。
+func loadClientConfig(rootDir string) clientConfig {
+	// 1. SKILLUI_DATA_ROOT 环境变量优先级最高
+	if envRoot := strings.TrimSpace(os.Getenv(dataRootEnv)); envRoot != "" {
+		return clientConfig{DataPath: filepath.Clean(expandHome(envRoot))}
+	}
+
+	cfgPath := filepath.Join(rootDir, clientConfigName)
+	defaultCfg := clientConfig{DataPath: filepath.Join(rootDir, "data")}
+
+	// 2. 读取 client.json 的 dataPath
+	if data, err := os.ReadFile(cfgPath); err == nil {
+		var cfg clientConfig
+		if json.Unmarshal(data, &cfg) == nil {
+			if dataPath := strings.TrimSpace(cfg.DataPath); dataPath != "" {
+				return clientConfig{DataPath: filepath.Clean(expandHome(dataPath))}
+			}
+		}
+	}
+
+	// 3. client.json 不存在/损坏/为空 → 迁移旧数据并写入默认配置
+	migrateLegacyData(rootDir, defaultCfg.DataPath)
+	writeClientConfig(cfgPath, defaultCfg)
+	return defaultCfg
+}
+
+// writeClientConfig 写入 client.json（自动创建父目录）。
+func writeClientConfig(cfgPath string, cfg clientConfig) {
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		return
+	}
+	if data, err := json.MarshalIndent(cfg, "", "  "); err == nil {
+		_ = os.WriteFile(cfgPath, data, 0o644)
+	}
+}
+
+// migrateLegacyData 将旧版直接存放在数据根目录（rootDir）顶层的数据
+// （config.json / logs / skills / system_logs）一次性迁移到数据目录 dataDir。
+func migrateLegacyData(rootDir, dataDir string) {
+	if filepath.Clean(rootDir) == filepath.Clean(dataDir) {
+		return
+	}
+	if _, err := os.Stat(dataDir); err == nil {
+		return // 数据目录已存在，跳过迁移
+	}
+	for _, name := range []string{"config.json", "logs", "skills", "system_logs"} {
+		src := filepath.Join(rootDir, name)
+		if _, err := os.Stat(src); err != nil {
+			continue
+		}
+		if err := os.MkdirAll(dataDir, 0o755); err != nil {
+			return
+		}
+		dst := filepath.Join(dataDir, name)
+		if _, err := os.Stat(dst); os.IsNotExist(err) {
+			_ = os.Rename(src, dst)
+		}
+	}
+}
+
 // getAppDataDir returns the unified app data directory.
-// All platforms store data in ~/.skillui for consistency.
+// Priority: SKILLUI_DATA_ROOT env > client.json dataPath > default ~/.skillui/data.
 func getAppDataDir() string {
 	homeDir, _ := os.UserHomeDir()
-	return filepath.Join(homeDir, ".skillui")
+	return loadClientConfig(filepath.Join(homeDir, ".skillui")).DataPath
 }
 
 // ProcessLogger holds the logger for a specific process
@@ -539,19 +618,19 @@ const baseURL = "https://skillui.com"
 
 // AppConfig holds application-wide configuration
 var appConfig = struct {
-	Name        string
-	Title       string
-	Slogan      string
-	Version     string
-	Website     string
-	WebsiteGithub string
-	WebsiteGitee  string
-	ApiBaseUrl    string
-	AnalyticsUrl  string
+	Name            string
+	Title           string
+	Slogan          string
+	Version         string
+	Website         string
+	WebsiteGithub   string
+	WebsiteGitee    string
+	ApiBaseUrl      string
+	AnalyticsUrl    string
 	VersionCheckUrl string
-	FeedbackUrl   string
-	GuideUrl      string
-	HelpUrl       string
+	FeedbackUrl     string
+	GuideUrl        string
+	HelpUrl         string
 }{
 	Name:            "SkillUI",
 	Title:           "SkillUI",

@@ -90,13 +90,13 @@ func expandHome(path string) string {
 }
 
 // getSkillDir returns the expanded skill directory path.
-// All platforms use the unified default ~/.skillui/skills.
+// 默认技能目录跟随数据根目录（默认 ~/.skillui/data/skills），
+// 设置 SKILLUI_DATA_ROOT 后技能目录随之隔离。
 func (a *App) getSkillDir() string {
 	if a.config.SkillDir != "" {
 		return expandHome(a.config.SkillDir)
 	}
-	homeDir, _ := os.UserHomeDir()
-	return filepath.Join(homeDir, ".skillui", "skills")
+	return filepath.Join(a.dataDir, "skills")
 }
 
 // GetAutoSyncToolIDs returns the list of tool IDs with auto-sync enabled

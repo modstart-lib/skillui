@@ -1,5 +1,8 @@
 ## [unreleased]
 
+- 新增：数据目录支持 `SKILLUI_DATA_ROOT` 环境变量覆盖，优先级 `SKILLUI_DATA_ROOT`（支持 `~` 展开）> `~/.skillui/client.json` 的 `dataPath` > 默认 `~/.skillui/data`；首次启动自动写入 `client.json`，并将旧版直接存放在 `~/.skillui` 顶层的数据（`config.json`/`logs`/`skills`/`system_logs`）一次性迁移到数据目录。
+- 优化：默认技能目录由 `~/.skillui/skills` 调整为跟随数据根目录（默认 `~/.skillui/data/skills`），设置 `SKILLUI_DATA_ROOT` 后技能目录随之隔离。
+- 修复：测试脚本进程清理由 `pkill -x SkillUI` 改为精确匹配 `build/bin/SkillUI`，避免误杀已安装的正式版进程。
 - 新增：AI Studio 识别支持手动设置工具规则目录，自动扫描识别不到已安装的 AI IDE 时，可手动指定路径（如 `~/.cursor/rules`），指定后该工具视为已安装并作为技能同步目标。
 - 新增：补充识别主流 AI 编程工具（Continue、Aider、Tabby、Coco、MarsCode），并完善各平台默认检测路径。
 - 新增：前端工具卡片提供"手动设置 / 修改路径 / 清除"操作入口与弹窗，展示手动标记。
